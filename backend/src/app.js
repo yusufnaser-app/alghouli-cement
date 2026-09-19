@@ -4,6 +4,9 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 
 const authRoutes = require('./modules/auth/auth.routes');
+const sourcesRoutes = require('./modules/sources/sources.routes');
+const categoriesRoutes = require('./modules/categories/categories.routes');
+const productsRoutes = require('./modules/products/products.routes');
 const errorHandler = require('./middlewares/errorHandler');
 const response = require('./utils/response');
 
@@ -24,6 +27,9 @@ app.get('/health', (req, res) => {
 
 const api = express.Router();
 api.use('/auth', authRoutes);
+api.use('/sources', sourcesRoutes);
+api.use('/categories', categoriesRoutes);
+api.use('/products', productsRoutes);
 
 app.use('/api/v1', api);
 
