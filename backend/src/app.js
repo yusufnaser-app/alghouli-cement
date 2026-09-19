@@ -10,6 +10,7 @@ const productsRoutes = require('./modules/products/products.routes');
 const customersRoutes = require('./modules/customers/customers.routes');
 const ordersRoutes = require('./modules/orders/orders.routes');
 const paymentsRoutes = require('./modules/payments/payments.routes');
+const invoicesRoutes = require('./modules/invoices/invoices.routes');
 const errorHandler = require('./middlewares/errorHandler');
 const response = require('./utils/response');
 
@@ -36,6 +37,7 @@ api.use('/products', productsRoutes);
 api.use('/customers', customersRoutes);
 api.use('/orders', ordersRoutes);
 api.use('/payments', paymentsRoutes);
+api.use('/invoices', invoicesRoutes);
 
 app.use('/api/v1', api);
 
