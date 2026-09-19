@@ -14,6 +14,7 @@ const invoicesRoutes = require('./modules/invoices/invoices.routes');
 const driversRoutes = require('./modules/drivers/drivers.routes');
 const vehiclesRoutes = require('./modules/vehicles/vehicles.routes');
 const deliveriesRoutes = require('./modules/deliveries/deliveries.routes');
+const reportsRoutes = require('./modules/reports/reports.routes');
 const errorHandler = require('./middlewares/errorHandler');
 const response = require('./utils/response');
 
@@ -44,6 +45,7 @@ api.use('/invoices', invoicesRoutes);
 api.use('/drivers', driversRoutes);
 api.use('/vehicles', vehiclesRoutes);
 api.use('/deliveries', deliveriesRoutes);
+api.use('/reports', reportsRoutes);
 
 app.use('/api/v1', api);
 
