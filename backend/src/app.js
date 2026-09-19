@@ -15,6 +15,12 @@ const driversRoutes = require('./modules/drivers/drivers.routes');
 const vehiclesRoutes = require('./modules/vehicles/vehicles.routes');
 const deliveriesRoutes = require('./modules/deliveries/deliveries.routes');
 const reportsRoutes = require('./modules/reports/reports.routes');
+const settingsRoutes = require('./modules/settings/settings.routes');
+const notificationsRoutes = require('./modules/notifications/notifications.routes');
+const offersRoutes = require('./modules/offers/offers.routes');
+const filesRoutes = require('./modules/files/files.routes');
+const posRoutes = require('./modules/pos/pos.routes');
+const adminRoutes = require('./modules/admin/admin.routes');
 const errorHandler = require('./middlewares/errorHandler');
 const response = require('./utils/response');
 
@@ -46,6 +52,12 @@ api.use('/drivers', driversRoutes);
 api.use('/vehicles', vehiclesRoutes);
 api.use('/deliveries', deliveriesRoutes);
 api.use('/reports', reportsRoutes);
+api.use('/settings', settingsRoutes);
+api.use('/notifications', notificationsRoutes);
+api.use('/offers', offersRoutes);
+api.use('/files', filesRoutes);
+api.use('/pos', posRoutes);
+api.use('/admin', adminRoutes);
 
 app.use('/api/v1', api);
 
