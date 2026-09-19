@@ -8,6 +8,7 @@ const sourcesRoutes = require('./modules/sources/sources.routes');
 const categoriesRoutes = require('./modules/categories/categories.routes');
 const productsRoutes = require('./modules/products/products.routes');
 const customersRoutes = require('./modules/customers/customers.routes');
+const ordersRoutes = require('./modules/orders/orders.routes');
 const errorHandler = require('./middlewares/errorHandler');
 const response = require('./utils/response');
 
@@ -32,6 +33,7 @@ api.use('/sources', sourcesRoutes);
 api.use('/categories', categoriesRoutes);
 api.use('/products', productsRoutes);
 api.use('/customers', customersRoutes);
+api.use('/orders', ordersRoutes);
 
 app.use('/api/v1', api);
 
