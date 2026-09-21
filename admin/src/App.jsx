@@ -6,6 +6,11 @@ import Dashboard from './pages/Dashboard';
 import Sources from './pages/sources/Sources';
 import Categories from './pages/categories/Categories';
 import Products from './pages/products/Products';
+import Orders from './pages/orders/Orders';
+import Payments from './pages/payments/Payments';
+import Customers from './pages/customers/Customers';
+import Drivers from './pages/drivers/Drivers';
+import Vehicles from './pages/vehicles/Vehicles';
 import './index.css';
 
 function ProtectedRoute({ children }) {
@@ -40,11 +45,11 @@ export default function App() {
           <Route path="/products" element={<ProtectedRoute><Products /></ProtectedRoute>} />
           <Route path="/sources" element={<ProtectedRoute><Sources /></ProtectedRoute>} />
           <Route path="/categories" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
-          <Route path="/orders" element={<ProtectedRoute><Placeholder icon="📦" title="الطلبات" /></ProtectedRoute>} />
-          <Route path="/payments" element={<ProtectedRoute><Placeholder icon="💰" title="المدفوعات" /></ProtectedRoute>} />
-          <Route path="/customers" element={<ProtectedRoute><Placeholder icon="👥" title="العملاء" /></ProtectedRoute>} />
-          <Route path="/drivers" element={<ProtectedRoute><Placeholder icon="🧑‍✈️" title="السائقون" /></ProtectedRoute>} />
-          <Route path="/vehicles" element={<ProtectedRoute><Placeholder icon="🚛" title="الشاحنات" /></ProtectedRoute>} />
+          <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
+          <Route path="/payments" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
+          <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
+          <Route path="/drivers" element={<ProtectedRoute><Drivers /></ProtectedRoute>} />
+          <Route path="/vehicles" element={<ProtectedRoute><Vehicles /></ProtectedRoute>} />
           <Route path="/deliveries" element={<ProtectedRoute><Placeholder icon="🚚" title="التوصيل" /></ProtectedRoute>} />
           <Route path="/reports" element={<ProtectedRoute><Placeholder icon="📈" title="التقارير" /></ProtectedRoute>} />
           <Route path="/inventory" element={<ProtectedRoute><Placeholder icon="📦" title="المخزون" /></ProtectedRoute>} />
