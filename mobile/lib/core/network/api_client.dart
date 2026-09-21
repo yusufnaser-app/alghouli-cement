@@ -14,6 +14,7 @@ class ApiClient {
         baseUrl: AppConfig.apiBaseUrl,
         connectTimeout: AppConfig.apiTimeout,
         receiveTimeout: AppConfig.apiTimeout,
+        sendTimeout: AppConfig.apiTimeout,
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -41,23 +42,38 @@ class ApiClient {
   }
 
   Future<Response> get(String path, {Map<String, dynamic>? query}) {
-    return dio.get(path, queryParameters: query);
+    return _retry(() => dio.get(path, queryParameters: query));
   }
 
   Future<Response> post(String path, {dynamic data}) {
-    return dio.post(path, data: data);
+    return _retry(() => dio.post(path, data: data));
   }
 
   Future<Response> put(String path, {dynamic data}) {
-    return dio.put(path, data: data);
+    return _retry(() => dio.put(path, data: data));
   }
 
   Future<Response> patch(String path, {dynamic data}) {
-    return dio.patch(path, data: data);
+    return _retry(() => dio.patch(path, data: data));
   }
 
   Future<Response> delete(String path) {
-    return dio.delete(path);
+    return _retry(() => dio.delete(path));
+  }
+
+  Future<Response> _retry(Future<Response> Function() fn) async {
+    try {
+      return await fn();
+    } on DioException catch (e) {
+      // أعد المحاولة فقط عند فشل الاتصال (ليس عند خطأ منطقي)
+      if (e.type == DioExceptionType.connectionError ||
+          e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout) {
+        await Future.delayed(const Duration(seconds: 3));
+        return await fn();
+      }
+      rethrow;
+    }
   }
 }
 
@@ -78,14 +94,22 @@ String handleApiError(dynamic error) {
       final data = error.response!.data as Map;
       if (data['message'] != null) return data['message'].toString();
     }
-    if (error.type == DioExceptionType.connectionTimeout ||
-        error.type == DioExceptionType.receiveTimeout) {
-      return 'انتهت مهلة الاتصال، تحقق من الإنترنت';
+    switch (error.type) {
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.receiveTimeout:
+      case DioExceptionType.sendTimeout:
+        return 'الخادم بطيء، جاري إعادة المحاولة...';
+      case DioExceptionType.connectionError:
+        return 'تحقق من الاتصال بالإنترنت ثم أعد المحاولة';
+      case DioExceptionType.badCertificate:
+        return 'خطأ في شهادة الأمان';
+      case DioExceptionType.cancel:
+        return 'تم إلغاء الطلب';
+      case DioExceptionType.badResponse:
+        return 'خطأ في الخادم: ${error.response?.statusCode}';
+      case DioExceptionType.unknown:
+        return 'خطأ غير معروف في الاتصال';
     }
-    if (error.type == DioExceptionType.connectionError) {
-      return 'لا يمكن الاتصال بالخادم';
-    }
-    return 'حدث خطأ في الاتصال';
   }
   return 'حدث خطأ غير متوقع';
 }
