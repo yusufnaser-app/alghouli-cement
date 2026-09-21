@@ -38,30 +38,6 @@ jobs:
           cd mobile
           flutter create --platforms=android --org com.alghouli --project-name alghouli_app .
 
-      - name: Fix Kotlin and compileSdk versions
-        run: |
-          cd mobile/android
-          # Fix Kotlin version
-          if [ -f build.gradle ]; then
-            sed -i 's/ext.kotlin_version = .*/ext.kotlin_version = "1.9.22"/' build.gradle
-          fi
-          if [ -f settings.gradle ]; then
-            sed -i 's/id "org.jetbrains.kotlin.android" version ".*"/id "org.jetbrains.kotlin.android" version "1.9.22"/' settings.gradle
-          fi
-          # Fix compileSdk
-          if [ -f app/build.gradle ]; then
-            sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 35/' app/build.gradle
-            sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 35/' app/build.gradle
-            sed -i 's/compileSdkVersion .*/compileSdkVersion 35/' app/build.gradle
-          fi
-          if [ -f app/build.gradle.kts ]; then
-            sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 35/' app/build.gradle.kts
-          fi
-          echo "=== build.gradle ==="
-          cat build.gradle 2>/dev/null || true
-          echo "=== app/build.gradle ==="
-          cat app/build.gradle 2>/dev/null || true
-
       - name: Build APK
         run: |
           cd mobile
@@ -70,6 +46,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: alghouli-apk-v2
+          name: alghouli-apk-v3
           path: mobile/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
