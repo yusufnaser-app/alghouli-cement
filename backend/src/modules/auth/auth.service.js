@@ -47,8 +47,8 @@ const register = async (data) => {
       err.code = 'DUPLICATE_ENTRY';
       throw err;
     }
-    await createOtp(data.phone, 'register');
-    return { userId: existing.rows[0].id, phone: data.phone, otpSent: true, resent: true };
+    const code = await createOtp(data.phone, 'register');
+    return { userId: existing.rows[0].id, phone: data.phone, otpSent: true, resent: true, devOtp: code };
   }
 
   const client = await pool.connect();
@@ -76,8 +76,8 @@ const register = async (data) => {
     );
 
     await client.query('COMMIT');
-    await createOtp(data.phone, 'register');
-    return { userId, phone: data.phone, otpSent: true };
+    const code = await createOtp(data.phone, 'register');
+    return { userId, phone: data.phone, otpSent: true, devOtp: code };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
