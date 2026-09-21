@@ -38,6 +38,21 @@ jobs:
           cd mobile
           flutter create --platforms=android --org com.alghouli --project-name alghouli_app .
 
+      - name: Add INTERNET permission to AndroidManifest
+        run: |
+          cd mobile/android/app/src/main
+          echo "=== Before ==="
+          head -5 AndroidManifest.xml
+          
+          # Add INTERNET permission right after <manifest ...> tag
+          sed -i 's|<manifest xmlns:android="http://schemas.android.com/apk/res/android">|<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET" />|' AndroidManifest.xml
+          
+          # Ensure application tag has usesCleartextTraffic
+          sed -i 's|<application|<application\n        android:usesCleartextTraffic="true"|' AndroidManifest.xml
+          
+          echo "=== After ==="
+          head -10 AndroidManifest.xml
+
       - name: Build APK
         run: |
           cd mobile
@@ -46,6 +61,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: alghouli-apk-v4
+          name: alghouli-apk-v5
           path: mobile/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
