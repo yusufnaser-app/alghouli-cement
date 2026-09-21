@@ -1,9 +1,57 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/app_config.dart';
+import '../../../../core/network/api_client.dart';
+import '../../../../core/storage/local_storage.dart';
+import '../../../auth/presentation/screens/login_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final _client = ApiClient();
+  List<dynamic> _products = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProducts();
+  }
+
+  Future<void> _loadProducts() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final res = await _client.get('/products');
+      setState(() {
+        _products = (res.data['data'] as List?) ?? [];
+      });
+    } on DioException catch (e) {
+      setState(() => _error = handleApiError(e));
+    } catch (e) {
+      setState(() => _error = 'خطأ في التحميل');
+    } finally {
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _logout() async {
+    await LocalStorage.clearAll();
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (route) => false,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -13,110 +61,62 @@ class HomeScreen extends StatelessWidget {
         title: const Text('مؤسسة الغولي'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            onPressed: () {},
+            icon: const Icon(Icons.logout),
+            onPressed: _logout,
+            tooltip: 'تسجيل الخروج',
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ترحيب
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'أهلاً بك 👋',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 14,
+      body: RefreshIndicator(
+        onRefresh: _loadProducts,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.error_outline,
+                              size: 60, color: AppColors.danger),
+                          const SizedBox(height: 16),
+                          Text(_error!,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: AppColors.danger)),
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            onPressed: _loadProducts,
+                            child: const Text('إعادة المحاولة'),
+                          ),
+                        ],
+                      ),
                     ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _products.length,
+                    itemBuilder: (context, i) {
+                      final p = _products[i] as Map<String, dynamic>;
+                      return _productCard(p);
+                    },
                   ),
-                  SizedBox(height: 4),
-                  Text(
-                    'ماذا تريد أن تبني اليوم؟',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // أنواع الأسمنت
-            const Text(
-              'اختر نوع الأسمنت',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(child: _categoryCard('OPC', 'بورتلاندي', 'أخضر', AppColors.cementOpc)),
-                const SizedBox(width: 12),
-                Expanded(child: _categoryCard('SRC', 'مقاوم', 'أحمر', AppColors.cementSrc)),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(child: _categoryCard('WPC', 'أبيض', 'تشطيبات', AppColors.cementWpc)),
-                const SizedBox(width: 12),
-                const Expanded(child: SizedBox()),
-              ],
-            ),
-            const SizedBox(height: 24),
-
-            // معلومات
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.divider),
-              ),
-              child: const Column(
-                children: [
-                  Icon(Icons.construction, size: 48, color: AppColors.warning),
-                  SizedBox(height: 12),
-                  Text(
-                    'قيد التطوير',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'سيتم إضافة شاشات المنتجات والسلة والطلبات قريبًا',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: AppColors.textSecondary),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
 
-  Widget _categoryCard(String code, String name, String subName, Color color) {
+  Widget _productCard(Map<String, dynamic> p) {
+    final color = _parseColor(p['category_color'] as String?);
+    final priceList = p['prices'] as List?;
+    final price = priceList != null && priceList.isNotEmpty
+        ? (priceList.first['price'] ?? 0)
+        : 0;
+    final unit = p['unit'] ?? 'bag';
+    final unitAr = unit == 'bag' ? 'كيس' : 'طن';
+    final packaging = p['packaging_type'] == 'bagged' ? 'أكياس' : 'سائب';
+
     return Container(
+      margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -124,38 +124,111 @@ class HomeScreen extends StatelessWidget {
         border: Border.all(color: color.withOpacity(0.3), width: 2),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.black12),
-            ),
-            child: Icon(
-              Icons.inventory_2,
-              color: code == 'WPC' ? Colors.black87 : Colors.white,
-            ),
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.black12),
+                ),
+                child: Icon(
+                  Icons.inventory_2,
+                  color: p['category_code'] == 'WPC'
+                      ? Colors.black87
+                      : Colors.white,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      p['name_ar'] ?? '',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${p['source_name'] ?? ''} • $packaging',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
-          Text(
-            name,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            subName,
-            style: const TextStyle(
-              fontSize: 12,
-              color: AppColors.textSecondary,
-            ),
+          const Divider(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('السعر',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                      )),
+                  Text(
+                    '${_formatPrice(price)} ريال / $unitAr',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.success.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  'متوفر',
+                  style: TextStyle(
+                    color: AppColors.success,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
+  }
+
+  Color _parseColor(String? hex) {
+    if (hex == null || hex.isEmpty) return AppColors.primaryLight;
+    try {
+      final cleaned = hex.replaceFirst('#', '');
+      return Color(int.parse('FF$cleaned', radix: 16));
+    } catch (_) {
+      return AppColors.primaryLight;
+    }
+  }
+
+  String _formatPrice(dynamic price) {
+    final n = double.tryParse(price.toString()) ?? 0;
+    return n.toStringAsFixed(0).replaceAllMapped(
+          RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
+          (m) => '${m[1]},',
+        );
   }
 }
