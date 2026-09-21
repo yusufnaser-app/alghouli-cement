@@ -1,42 +1,35 @@
-import 'package:shared_preferences/shared_preferences.dart';
-
 class LocalStorage {
-  static const _tokenKey = 'auth_token';
-  static const _refreshTokenKey = 'refresh_token';
-  static const _userKey = 'user_data';
+  static String? _token;
+  static String? _refreshToken;
+  static String? _user;
 
   static Future<void> saveToken(String token) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tokenKey, token);
+    _token = token;
   }
 
   static Future<String?> getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_tokenKey);
+    return _token;
   }
 
   static Future<void> saveRefreshToken(String token) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_refreshTokenKey, token);
+    _refreshToken = token;
   }
 
   static Future<String?> getRefreshToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_refreshTokenKey);
+    return _refreshToken;
   }
 
   static Future<void> saveUser(String userJson) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_userKey, userJson);
+    _user = userJson;
   }
 
   static Future<String?> getUser() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_userKey);
+    return _user;
   }
 
   static Future<void> clearAll() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
+    _token = null;
+    _refreshToken = null;
+    _user = null;
   }
 }

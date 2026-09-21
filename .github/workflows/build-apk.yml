@@ -46,6 +46,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: alghouli-apk-v3
+          name: alghouli-apk-v4
           path: mobile/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
