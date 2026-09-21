@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/widgets/primary_button.dart';
 import '../../data/auth_service.dart';
-import '../../../home/presentation/screens/home_screen.dart';
+import '../../../home/presentation/screens/main_navigation_screen.dart';
 
 class OtpScreen extends StatefulWidget {
   final String phone;
@@ -52,7 +52,7 @@ class _OtpScreenState extends State<OtpScreen> {
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(builder: (_) => const MainNavigationScreen()),
         (route) => false,
       );
     } catch (e) {
