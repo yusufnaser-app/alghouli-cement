@@ -18,6 +18,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   final _authService = AuthService();
   bool _loading = false;
+  bool _obscure = true;
   String? _error;
 
   @override
@@ -66,7 +67,7 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 40),
+              const SizedBox(height: 30),
               Center(
                 child: Container(
                   width: 100,
@@ -74,12 +75,16 @@ class _LoginScreenState extends State<LoginScreen> {
                   decoration: BoxDecoration(
                     color: AppColors.primary,
                     borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primary.withOpacity(0.3),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
                   ),
-                  child: const Icon(
-                    Icons.business,
-                    size: 60,
-                    color: Colors.white,
-                  ),
+                  child: const Icon(Icons.business,
+                      size: 60, color: Colors.white),
                 ),
               ),
               const SizedBox(height: 24),
@@ -94,9 +99,10 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'تسجيل الدخول',
+                'لبيع وتسويق الأسمنت إلكترونيًا',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, color: AppColors.textSecondary),
+                style: TextStyle(
+                    fontSize: 13, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 40),
               if (_error != null) ...[
@@ -108,13 +114,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.error_outline, color: AppColors.danger),
+                      const Icon(Icons.error_outline,
+                          color: AppColors.danger),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: Text(
-                          _error!,
-                          style: const TextStyle(color: AppColors.danger),
-                        ),
+                        child: Text(_error!,
+                            style:
+                                const TextStyle(color: AppColors.danger)),
                       ),
                     ],
                   ),
@@ -122,7 +128,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 16),
               ],
               const Text('رقم الهاتف',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 14)),
               const SizedBox(height: 8),
               TextField(
                 controller: _phoneController,
@@ -134,14 +141,24 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 16),
               const Text('كلمة المرور',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 14)),
               const SizedBox(height: 8),
               TextField(
                 controller: _passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(
+                obscureText: _obscure,
+                decoration: InputDecoration(
                   hintText: '••••••••',
-                  prefixIcon: Icon(Icons.lock_outline),
+                  prefixIcon: const Icon(Icons.lock_outline),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscure
+                          ? Icons.visibility_off
+                          : Icons.visibility,
+                      color: AppColors.textSecondary,
+                    ),
+                    onPressed: () => setState(() => _obscure = !_obscure),
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
@@ -158,8 +175,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => const RegisterScreen(),
-                      ),
+                          builder: (_) => const RegisterScreen()),
                     );
                   },
                   child: const Text(
@@ -169,6 +185,15 @@ class _LoginScreenState extends State<LoginScreen> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Center(
+                child: Text(
+                  'الإصدار 1.0.0',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textSecondary.withOpacity(0.6)),
                 ),
               ),
             ],
