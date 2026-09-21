@@ -13,4 +13,21 @@ const getById = asyncHandler(async (req, res) => {
   return response.success(res, source);
 });
 
-module.exports = { list, getById };
+const create = asyncHandler(async (req, res) => {
+  const source = await service.create(req.body);
+  return response.created(res, source, 'تم إنشاء المصنع');
+});
+
+const update = asyncHandler(async (req, res) => {
+  const source = await service.update(req.params.id, req.body);
+  if (!source) return response.error(res, 'المصنع غير موجود', 404);
+  return response.success(res, source, 'تم التحديث');
+});
+
+const remove = asyncHandler(async (req, res) => {
+  const ok = await service.remove(req.params.id);
+  if (!ok) return response.error(res, 'المصنع غير موجود', 404);
+  return response.success(res, null, 'تم الحذف');
+});
+
+module.exports = { list, getById, create, update, remove };
