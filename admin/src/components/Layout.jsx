@@ -14,6 +14,7 @@ const menuItems = [
   { section: 'الإدارة', items: [
     { path: '/products', label: 'المنتجات', icon: '📋', roles: ['admin', 'inventory'] },
     { path: '/sources', label: 'المصانع', icon: '🏭', roles: ['admin'] },
+    { path: '/categories', label: 'الأنواع', icon: '🎨', roles: ['admin'] },
     { path: '/customers', label: 'العملاء', icon: '👥', roles: ['sales', 'admin'] },
     { path: '/drivers', label: 'السائقون', icon: '🧑‍✈️', roles: ['transport', 'admin'] },
     { path: '/vehicles', label: 'الشاحنات', icon: '🚛', roles: ['transport', 'admin'] },
@@ -34,6 +35,7 @@ const pageTitles = {
   '/deliveries': { title: 'التوصيل', subtitle: 'إدارة الرحلات والتسليم' },
   '/products': { title: 'المنتجات', subtitle: 'إدارة الأسمنت والأسعار' },
   '/sources': { title: 'المصانع', subtitle: 'إدارة المصانع' },
+  '/categories': { title: 'الأنواع', subtitle: 'أنواع الأسمنت والألوان' },
   '/customers': { title: 'العملاء', subtitle: 'قائمة العملاء' },
   '/drivers': { title: 'السائقون', subtitle: 'إدارة السائقين' },
   '/vehicles': { title: 'الشاحنات', subtitle: 'إدارة الشاحنات' },
