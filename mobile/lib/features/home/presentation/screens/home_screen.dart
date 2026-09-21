@@ -134,7 +134,7 @@ class HomeScreen extends StatelessWidget {
               border: Border.all(color: Colors.black12),
             ),
             child: Icon(
-              Icons.cement,
+              Icons.inventory_2,
               color: code == 'WPC' ? Colors.black87 : Colors.white,
             ),
           ),
