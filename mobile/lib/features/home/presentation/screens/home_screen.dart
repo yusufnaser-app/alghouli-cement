@@ -6,6 +6,7 @@ import '../../../../core/storage/local_storage.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
 import '../../../cart/data/cart_manager.dart';
 import '../../../cart/presentation/screens/cart_screen.dart';
+import '../../../orders/presentation/screens/orders_list_screen.dart';
 import '../../../products/presentation/screens/product_details_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -44,9 +45,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     try {
       final res = await _client.get('/products');
-      setState(() {
-        _products = (res.data['data'] as List?) ?? [];
-      });
+      setState(() => _products = (res.data['data'] as List?) ?? []);
     } on DioException catch (e) {
       setState(() => _error = handleApiError(e));
     } catch (e) {
@@ -74,6 +73,16 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('مؤسسة الغولي'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.receipt_long),
+            tooltip: 'طلباتي',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const OrdersListScreen()),
+              );
+            },
+          ),
           Stack(
             children: [
               IconButton(
@@ -109,10 +118,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
             ],
           ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _logout,
-          ),
+          IconButton(icon: const Icon(Icons.logout), onPressed: _logout),
         ],
       ),
       body: RefreshIndicator(
