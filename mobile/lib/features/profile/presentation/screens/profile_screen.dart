@@ -4,6 +4,7 @@ import '../../../../core/storage/local_storage.dart';
 import '../../../addresses/presentation/screens/addresses_screen.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
 import '../../../invoices/presentation/screens/invoices_screen.dart';
+import '../../../notifications/presentation/screens/notifications_screen.dart';
 import '../../../orders/presentation/screens/orders_list_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -60,7 +61,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 CircleAvatar(
                   radius: 32,
                   backgroundColor: Colors.white,
-                  child: Icon(Icons.person, size: 40, color: AppColors.primary),
+                  child:
+                      Icon(Icons.person, size: 40, color: AppColors.primary),
                 ),
                 SizedBox(width: 16),
                 Column(
@@ -82,24 +84,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 20),
           _item(Icons.receipt_long, 'طلباتي', () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const OrdersListScreen()),
-            );
+            Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const OrdersListScreen()));
           }),
           _item(Icons.receipt, 'الفواتير', () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const InvoicesScreen()),
-            );
+            Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const InvoicesScreen()));
           }),
           _item(Icons.location_on, 'العناوين المحفوظة', () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const AddressesScreen()),
-            );
+            Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const AddressesScreen()));
           }),
-          _item(Icons.notifications, 'الإشعارات', () {}),
+          _item(Icons.notifications, 'الإشعارات', () {
+            Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const NotificationsScreen()));
+          }),
           const Divider(height: 32),
           _item(Icons.phone, 'تواصل معنا', () {}),
           _item(Icons.info_outline, 'عن التطبيق', () {}),
