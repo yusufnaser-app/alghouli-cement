@@ -19,16 +19,29 @@ class CustomerSummary {
   });
 
   factory CustomerSummary.fromJson(Map<String, dynamic> json) {
-    final balance = double.tryParse(json['current_balance']?.toString() ?? '0') ?? 0;
-    final limit = double.tryParse(json['credit_limit']?.toString() ?? '0') ?? 0;
+    final balance = _parseDouble(json['current_balance']);
+    final limit = _parseDouble(json['credit_limit']);
     return CustomerSummary(
       currentBalance: balance,
       creditLimit: limit,
-      totalPurchases: double.tryParse(json['total_purchases']?.toString() ?? '0') ?? 0,
-      totalPayments: double.tryParse(json['total_payments']?.toString() ?? '0') ?? 0,
-      totalOrders: json['total_orders'] ?? 0,
+      totalPurchases: _parseDouble(json['total_purchases']),
+      totalPayments: _parseDouble(json['total_payments']),
+      totalOrders: _parseInt(json['total_orders']),
       availableCredit: limit > 0 ? (limit - balance) : 0,
     );
+  }
+
+  static double _parseDouble(dynamic v) {
+    if (v == null) return 0;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString()) ?? 0;
+  }
+
+  static int _parseInt(dynamic v) {
+    if (v == null) return 0;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString()) ?? 0;
   }
 }
 
@@ -79,7 +92,10 @@ class WalletService {
         'quantity': quantity.toString(),
         'unit': unit,
       });
-      return double.tryParse(res.data['data']['amount']?.toString() ?? '0') ?? 0;
+      final v = res.data['data']?['amount'];
+      if (v == null) return 0;
+      if (v is num) return v.toDouble();
+      return double.tryParse(v.toString()) ?? 0;
     } catch (_) {
       return 0;
     }
