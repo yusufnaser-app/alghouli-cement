@@ -8,6 +8,7 @@ import '../../../contact/presentation/screens/contact_screen.dart';
 import '../../../invoices/presentation/screens/invoices_screen.dart';
 import '../../../notifications/presentation/screens/notifications_screen.dart';
 import '../../../orders/presentation/screens/orders_list_screen.dart';
+import '../../../wallet/presentation/screens/wallet_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -92,6 +93,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _item(Icons.receipt_long, 'قائمة الطلبات', () {
             Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const OrdersListScreen()));
+          }),
+          _item(Icons.account_balance_wallet, 'محفظتي', () {
+            Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const WalletScreen()));
           }),
           _item(Icons.receipt, 'الفواتير', () {
             Navigator.push(context,
