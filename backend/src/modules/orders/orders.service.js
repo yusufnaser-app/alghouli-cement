@@ -1,4 +1,6 @@
 const { pool, query } = require('../../config/db');
+const transportService = require('./transport.service');
+const ledgerService = require('../customers/ledger.service');
 
 const generateOrderNumber = async () => {
   const year = new Date().getFullYear();
@@ -7,25 +9,53 @@ const generateOrderNumber = async () => {
     [`GHO-${year}-%`]
   );
   const count = parseInt(result.rows[0].count, 10) + 1;
-  const padded = String(count).padStart(6, '0');
-  return `GHO-${year}-${padded}`;
+  return `GHO-${year}-${String(count).padStart(6, '0')}`;
 };
 
-const calculateShipping = async (governorate, area, totalAmount) => {
-  const result = await query(
-    `SELECT sr.base_price
-     FROM shipping_rates sr
-     JOIN shipping_zones sz ON sz.id = sr.zone_id
-     WHERE sz.governorate = $1
-       AND (sz.area IS NULL OR sz.area = $2)
-       AND sr.status = 'active'
-     ORDER BY sr.base_price ASC
-     LIMIT 1`,
-    [governorate, area]
+/**
+ * التحقق من إمكانية الطلب الآجل
+ * يُحسب: الرصيد الحالي + الطلبات المعلقة + قيمة الطلب الجديد
+ */
+const checkCreditAvailability = async (client, customerId, newOrderAmount) => {
+  const cust = await client.query(
+    `SELECT current_balance, credit_limit, customer_type
+     FROM customers WHERE id = $1`,
+    [customerId]
   );
-  if (result.rows.length > 0) return parseFloat(result.rows[0].base_price);
-  // قيمة افتراضية
-  return 50000;
+  if (cust.rows.length === 0) {
+    const err = new Error('العميل غير موجود');
+    err.status = 404;
+    throw err;
+  }
+
+  const customer = cust.rows[0];
+  const currentBalance = parseFloat(customer.current_balance || 0);
+  const creditLimit = parseFloat(customer.credit_limit || 0);
+
+  // احسب الطلبات الآجلة المعلقة (بانتظار موافقة المدير)
+  const pendingResult = await client.query(
+    `SELECT COALESCE(SUM(total_amount), 0) AS pending
+     FROM orders
+     WHERE customer_id = $1
+       AND payment_terms = 'credit'
+       AND status = 'PENDING_ADMIN_APPROVAL'`,
+    [customerId]
+  );
+  const pendingBalance = parseFloat(pendingResult.rows[0].pending || 0);
+
+  const totalCommitted = currentBalance + pendingBalance + newOrderAmount;
+
+  return {
+    current_balance: currentBalance,
+    pending_balance: pendingBalance,
+    new_order_amount: newOrderAmount,
+    total_after: totalCommitted,
+    credit_limit: creditLimit,
+    can_approve: creditLimit === 0 || totalCommitted <= creditLimit,
+    available_credit: creditLimit > 0
+      ? Math.max(0, creditLimit - currentBalance - pendingBalance)
+      : Infinity,
+  };
 };
 
 const createOrder = async (userId, data) => {
@@ -33,9 +63,9 @@ const createOrder = async (userId, data) => {
   try {
     await client.query('BEGIN');
 
-    // احصل على customer_id
     const cust = await client.query(
-      `SELECT id FROM customers WHERE user_id = $1`,
+      `SELECT id, customer_type, current_balance, credit_limit, governorate, area
+       FROM customers WHERE user_id = $1`,
       [userId]
     );
     if (cust.rows.length === 0) {
@@ -44,27 +74,62 @@ const createOrder = async (userId, data) => {
       throw err;
     }
     const customerId = cust.rows[0].id;
+    const customer = cust.rows[0];
 
-    // تحقق من العنوان
-    const addr = await client.query(
-      `SELECT id, governorate, area FROM customer_addresses
-       WHERE id = $1 AND customer_id = $2`,
-      [data.addressId, customerId]
-    );
-    if (addr.rows.length === 0) {
-      const err = new Error('العنوان غير موجود');
-      err.status = 404;
-      throw err;
+    // تحديد العنوان
+    let addressId = data.addressId;
+    let governorate = customer.governorate;
+    let area = customer.area;
+
+    if (data.deliveryType === 'alghouli_delivery') {
+      if (!addressId) {
+        const err = new Error('عنوان التسليم مطلوب');
+        err.status = 400;
+        throw err;
+      }
+      const addr = await client.query(
+        `SELECT id, governorate, area FROM customer_addresses
+         WHERE id = $1 AND customer_id = $2`,
+        [addressId, customerId]
+      );
+      if (addr.rows.length === 0) {
+        const err = new Error('العنوان غير موجود');
+        err.status = 404;
+        throw err;
+      }
+      governorate = addr.rows[0].governorate;
+      area = addr.rows[0].area;
+    } else if (data.deliveryType === 'trader_pickup') {
+      // استلام ذاتي — بيانات السائق مطلوبة
+      if (!data.traderTruckPlate || !data.traderDriverName) {
+        const err = new Error('رقم الشاحنة واسم السائق مطلوبان');
+        err.status = 400;
+        throw err;
+      }
+      const existingAddr = await client.query(
+        `SELECT id FROM customer_addresses WHERE customer_id = $1 AND is_default = true LIMIT 1`,
+        [customerId]
+      );
+      if (existingAddr.rows.length > 0) {
+        addressId = existingAddr.rows[0].id;
+      } else {
+        const newAddr = await client.query(
+          `INSERT INTO customer_addresses
+           (customer_id, label, governorate, area, address_text, is_default)
+           VALUES ($1, 'افتراضي', $2, $3, 'يُحدد', true)
+           RETURNING id`,
+          [customerId, customer.governorate || 'صنعاء', customer.area || '']
+        );
+        addressId = newAddr.rows[0].id;
+      }
     }
-    const address = addr.rows[0];
 
     // احسب الأسعار
     let subtotal = 0;
-    let discountAmount = 0;
+    let transportTotal = 0;
     const itemsWithPrice = [];
 
     for (const item of data.items) {
-      // احصل على المنتج
       const prod = await client.query(
         `SELECT p.id, p.source_id, p.packaging_type, p.name_ar,
                 COALESCE(i.unit, CASE WHEN p.packaging_type = 'bagged' THEN 'bag' ELSE 'ton' END) AS unit,
@@ -75,25 +140,18 @@ const createOrder = async (userId, data) => {
         [item.productId]
       );
       if (prod.rows.length === 0) {
-        const err = new Error(`المنتج غير موجود: ${item.productId}`);
+        const err = new Error(`المنتج غير موجود`);
         err.status = 404;
         throw err;
       }
       const product = prod.rows[0];
 
-      // تحقق من الكمية
       if (parseFloat(product.available_qty) < item.quantity) {
         const err = new Error(`الكمية غير كافية من: ${product.name_ar}`);
         err.status = 400;
         err.code = 'INSUFFICIENT_STOCK';
         throw err;
       }
-
-      // احسب السعر حسب نوع العميل
-      const customerType = (await client.query(
-        `SELECT customer_type FROM customers WHERE id = $1`,
-        [customerId]
-      )).rows[0].customer_type;
 
       const price = await client.query(
         `SELECT pp.price
@@ -102,13 +160,12 @@ const createOrder = async (userId, data) => {
          WHERE pp.product_id = $1 AND pl.customer_type = $2
            AND $3 >= pp.min_qty
            AND ($3 <= pp.max_qty OR pp.max_qty IS NULL)
-         ORDER BY pp.min_qty DESC
-         LIMIT 1`,
-        [product.id, customerType, item.quantity]
+         ORDER BY pp.min_qty DESC LIMIT 1`,
+        [product.id, customer.customer_type, item.quantity]
       );
 
       if (price.rows.length === 0) {
-        const err = new Error(`لا يوجد سعر متاح للمنتج: ${product.name_ar}`);
+        const err = new Error(`لا يوجد سعر متاح للمنتج`);
         err.status = 400;
         throw err;
       }
@@ -117,6 +174,20 @@ const createOrder = async (userId, data) => {
       const lineTotal = unitPrice * item.quantity;
       subtotal += lineTotal;
 
+      let lineTransport = 0;
+      if (data.deliveryType === 'alghouli_delivery') {
+        const transport = await transportService.calculateTransport({
+          sourceId: product.source_id,
+          governorate,
+          area,
+          packagingType: product.packaging_type,
+          quantity: item.quantity,
+          unit: product.unit,
+        });
+        lineTransport = transport.amount;
+      }
+      transportTotal += lineTransport;
+
       itemsWithPrice.push({
         productId: product.id,
         sourceId: product.source_id,
@@ -124,47 +195,66 @@ const createOrder = async (userId, data) => {
         quantity: item.quantity,
         unit: product.unit,
         unitPrice,
-        discount: 0,
         lineTotal,
+        transportAmount: lineTransport,
       });
     }
 
-    // احسب النقل
-    const shippingAmount = await calculateShipping(
-      address.governorate,
-      address.area,
-      subtotal
-    );
+    const totalAmount = subtotal + transportTotal;
+    const paymentTerms = data.paymentTerms || 'cash';
 
-    const totalAmount = subtotal - discountAmount + shippingAmount;
+    // التحقق من الحد الائتماني إذا كان الطلب آجلًا
+    let creditCheck = null;
+    if (paymentTerms === 'credit') {
+      creditCheck = await checkCreditAvailability(client, customerId, totalAmount);
+      if (!creditCheck.can_approve) {
+        const err = new Error(
+          `الطلب يتجاوز الحد الائتماني. ` +
+          `الرصيد الحالي: ${creditCheck.current_balance.toLocaleString()}، ` +
+          `المعلق: ${creditCheck.pending_balance.toLocaleString()}، ` +
+          `الحد: ${creditCheck.credit_limit.toLocaleString()}`
+        );
+        err.status = 400;
+        err.code = 'CREDIT_LIMIT_EXCEEDED';
+        err.data = creditCheck;
+        throw err;
+      }
+    }
 
-    // أنشئ الطلب
+    // الحالة الأولية
+    let initialStatus;
+    if (paymentTerms === 'credit') {
+      initialStatus = 'PENDING_ADMIN_APPROVAL';
+    } else {
+      initialStatus = 'PENDING_PAYMENT';
+    }
+
     const orderNumber = await generateOrderNumber();
 
     const orderResult = await client.query(
       `INSERT INTO orders
        (order_number, customer_id, address_id, status, source,
         subtotal, discount_amount, shipping_amount, total_amount,
-        paid_amount, remaining_amount, notes, created_by)
-       VALUES ($1, $2, $3, 'PENDING_PAYMENT', 'ONLINE',
-               $4, $5, $6, $7, 0, $7, $8, $9)
-       RETURNING id, order_number, status, subtotal, discount_amount,
-                 shipping_amount, total_amount, created_at`,
+        paid_amount, remaining_amount, notes, created_by,
+        delivery_type, trader_truck_plate, trader_driver_name, trader_driver_phone,
+        transport_unit, payment_terms)
+       VALUES ($1, $2, $3, $4, 'ONLINE',
+               $5, 0, $6, $7, 0, $7, $8, $9,
+               $10, $11, $12, $13, $14, $15)
+       RETURNING id, order_number, status, subtotal, shipping_amount,
+                 total_amount, created_at`,
       [
-        orderNumber,
-        customerId,
-        data.addressId,
-        subtotal,
-        discountAmount,
-        shippingAmount,
-        totalAmount,
-        data.notes || null,
-        userId,
+        orderNumber, customerId, addressId, initialStatus,
+        subtotal, transportTotal, totalAmount, data.notes || null, userId,
+        data.deliveryType, data.traderTruckPlate || null,
+        data.traderDriverName || null, data.traderDriverPhone || null,
+        itemsWithPrice[0]?.unit || 'bag',
+        paymentTerms,
       ]
     );
     const order = orderResult.rows[0];
 
-    // أضف العناصر
+    // إضافة العناصر
     for (const item of itemsWithPrice) {
       await client.query(
         `INSERT INTO order_items
@@ -172,29 +262,47 @@ const createOrder = async (userId, data) => {
           unit_price, discount, line_total)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
-          order.id,
-          item.productId,
-          item.sourceId,
-          item.packagingType,
-          item.quantity,
-          item.unit,
-          item.unitPrice,
-          item.discount,
-          item.lineTotal,
+          order.id, item.productId, item.sourceId, item.packagingType,
+          item.quantity, item.unit, item.unitPrice, 0, item.lineTotal,
         ]
       );
 
-      // احجز الكمية
       await client.query(
-        `UPDATE inventory
-         SET reserved_qty = reserved_qty + $1, updated_at = NOW()
+        `UPDATE inventory SET reserved_qty = reserved_qty + $1, updated_at = NOW()
          WHERE product_id = $2`,
         [item.quantity, item.productId]
       );
     }
 
+    // إذا كان دفعًا فوريًا: سجّل الدين
+    // إذا كان آجلًا: لا تسجّل — في انتظار موافقة المدير
+    if (paymentTerms === 'cash') {
+      await ledgerService.addTransaction(client, {
+        customerId,
+        orderId: order.id,
+        transactionType: 'purchase',
+        debit: totalAmount,
+        description: `طلب ${orderNumber} (دفع فوري)`,
+        createdBy: userId,
+      });
+    }
+
+    // سجّل الحالة
+    await client.query(
+      `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
+       VALUES ($1, NULL, $2, $3, $4)`,
+      [order.id, initialStatus, userId,
+       paymentTerms === 'credit' ? 'طلب آجل - بانتظار موافقة المدير' : 'طلب فوري']
+    );
+
     await client.query('COMMIT');
-    return order;
+
+    return {
+      ...order,
+      delivery_type: data.deliveryType,
+      payment_terms: paymentTerms,
+      credit_check: creditCheck,
+    };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -203,24 +311,167 @@ const createOrder = async (userId, data) => {
   }
 };
 
+/**
+ * موافقة المدير على الطلب الآجل
+ */
+const approveCreditOrder = async (orderId, adminId) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const orderResult = await client.query(
+      `SELECT id, order_number, customer_id, status, total_amount, payment_terms
+       FROM orders WHERE id = $1 FOR UPDATE`,
+      [orderId]
+    );
+    if (orderResult.rows.length === 0) {
+      const err = new Error('الطلب غير موجود');
+      err.status = 404;
+      throw err;
+    }
+
+    const order = orderResult.rows[0];
+
+    if (order.status !== 'PENDING_ADMIN_APPROVAL') {
+      const err = new Error('الطلب ليس بانتظار الموافقة');
+      err.status = 400;
+      throw err;
+    }
+
+    if (order.payment_terms !== 'credit') {
+      const err = new Error('الطلب ليس آجلًا');
+      err.status = 400;
+      throw err;
+    }
+
+    // سجّل الدين
+    await ledgerService.addTransaction(client, {
+      customerId: order.customer_id,
+      orderId: order.id,
+      transactionType: 'purchase',
+      debit: parseFloat(order.total_amount),
+      description: `طلب آجل ${order.order_number} - موافقة المدير`,
+      createdBy: adminId,
+    });
+
+    // حدّث الطلب
+    await client.query(
+      `UPDATE orders
+       SET status = 'PREPARING',
+           credit_approved_by = $1,
+           credit_approved_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $2`,
+      [adminId, orderId]
+    );
+
+    // سجّل الحالة
+    await client.query(
+      `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
+       VALUES ($1, 'PENDING_ADMIN_APPROVAL', 'PREPARING', $2, 'موافقة المدير على الطلب الآجل')`,
+      [orderId, adminId]
+    );
+
+    await client.query('COMMIT');
+    return { id: orderId, status: 'PREPARING' };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
+/**
+ * رفض المدير للطلب الآجل
+ */
+const rejectCreditOrder = async (orderId, adminId, reason) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const orderResult = await client.query(
+      `SELECT id, order_number, status, payment_terms FROM orders WHERE id = $1 FOR UPDATE`,
+      [orderId]
+    );
+    if (orderResult.rows.length === 0) {
+      const err = new Error('الطلب غير موجود');
+      err.status = 404;
+      throw err;
+    }
+
+    const order = orderResult.rows[0];
+    if (order.status !== 'PENDING_ADMIN_APPROVAL') {
+      const err = new Error('الطلب ليس بانتظار الموافقة');
+      err.status = 400;
+      throw err;
+    }
+
+    await client.query(
+      `UPDATE orders
+       SET status = 'CREDIT_REJECTED',
+           credit_rejection_reason = $1,
+           updated_at = NOW()
+       WHERE id = $2`,
+      [reason, orderId]
+    );
+
+    // أعد الكميات
+    const items = await client.query(
+      `SELECT product_id, quantity FROM order_items WHERE order_id = $1`,
+      [orderId]
+    );
+    for (const item of items.rows) {
+      await client.query(
+        `UPDATE inventory SET reserved_qty = GREATEST(0, reserved_qty - $1), updated_at = NOW()
+         WHERE product_id = $2`,
+        [item.quantity, item.product_id]
+      );
+    }
+
+    await client.query(
+      `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
+       VALUES ($1, 'PENDING_ADMIN_APPROVAL', 'CREDIT_REJECTED', $2, $3)`,
+      [orderId, adminId, `رفض المدير: ${reason}`]
+    );
+
+    await client.query('COMMIT');
+    return { id: orderId, status: 'CREDIT_REJECTED' };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
+/**
+ * الطلبات بانتظار موافقة المدير
+ */
+const listPendingCreditOrders = async () => {
+  const r = await query(
+    `SELECT o.id, o.order_number, o.status, o.total_amount, o.created_at,
+            o.delivery_type, o.payment_terms, o.notes,
+            c.id AS customer_id, c.customer_type, c.current_balance, c.credit_limit,
+            u.full_name AS customer_name, u.phone AS customer_phone,
+            (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) AS items_count
+     FROM orders o
+     JOIN customers c ON c.id = o.customer_id
+     JOIN users u ON u.id = c.user_id
+     WHERE o.status = 'PENDING_ADMIN_APPROVAL'
+     ORDER BY o.created_at ASC`
+  );
+  return r.rows;
+};
+
 const getMyOrders = async (userId) => {
   const result = await query(
     `SELECT o.id, o.order_number, o.status, o.source,
             o.subtotal, o.discount_amount, o.shipping_amount,
             o.total_amount, o.paid_amount, o.remaining_amount,
+            o.delivery_type, o.payment_terms, o.credit_rejection_reason,
             o.created_at,
-            (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) AS items_count,
-            (SELECT json_agg(json_build_object(
-              'name', p.name_ar,
-              'packaging_type', oi.packaging_type,
-              'quantity', oi.quantity,
-              'unit', oi.unit,
-              'unit_price', oi.unit_price,
-              'line_total', oi.line_total
-            ))
-            FROM order_items oi
-            JOIN products p ON p.id = oi.product_id
-            WHERE oi.order_id = o.id) AS items
+            (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) AS items_count
      FROM orders o
      JOIN customers c ON c.id = o.customer_id
      WHERE c.user_id = $1
@@ -232,11 +483,8 @@ const getMyOrders = async (userId) => {
 
 const getOrderById = async (orderId, userId = null, isAdmin = false) => {
   let sql = `
-    SELECT o.id, o.order_number, o.status, o.source,
-           o.subtotal, o.discount_amount, o.shipping_amount,
-           o.total_amount, o.paid_amount, o.remaining_amount,
-           o.notes, o.created_at, o.updated_at,
-           c.id AS customer_id, c.customer_type,
+    SELECT o.*,
+           c.id AS customer_id, c.customer_type, c.current_balance, c.credit_limit,
            u.full_name AS customer_name, u.phone AS customer_phone,
            a.label AS address_label, a.governorate, a.area,
            a.address_text, a.alt_phone
@@ -259,9 +507,7 @@ const getOrderById = async (orderId, userId = null, isAdmin = false) => {
   const order = orderResult.rows[0];
 
   const itemsResult = await query(
-    `SELECT oi.id, oi.quantity, oi.unit, oi.unit_price,
-            oi.discount, oi.line_total, oi.packaging_type,
-            p.name_ar AS product_name, p.grade,
+    `SELECT oi.*, p.name_ar AS product_name, p.grade,
             s.name_ar AS source_name, s.code AS source_code,
             cat.name_ar AS category_name, cat.color_code, cat.color_name_ar
      FROM order_items oi
@@ -281,9 +527,9 @@ const cancelOrder = async (orderId, userId, reason) => {
   try {
     await client.query('BEGIN');
 
-    // تحقق من الطلب
     const result = await client.query(
-      `SELECT o.id, o.status FROM orders o
+      `SELECT o.id, o.status, o.customer_id, o.payment_terms, o.total_amount
+       FROM orders o
        JOIN customers c ON c.id = o.customer_id
        WHERE o.id = $1 AND c.user_id = $2`,
       [orderId, userId]
@@ -295,22 +541,21 @@ const cancelOrder = async (orderId, userId, reason) => {
     }
 
     const order = result.rows[0];
-    const cancellableStatuses = ['PENDING_PAYMENT', 'RECEIPT_UPLOADED', 'CREATED'];
-    if (!cancellableStatuses.includes(order.status)) {
+    const cancellable = ['PENDING_PAYMENT', 'RECEIPT_UPLOADED', 'CREATED', 'PENDING_ADMIN_APPROVAL'];
+    if (!cancellable.includes(order.status)) {
       const err = new Error('لا يمكن إلغاء الطلب في حالته الحالية');
       err.status = 400;
       throw err;
     }
 
-    // أعد الكميات من الحجز
+    // أعد الكميات
     const items = await client.query(
       `SELECT product_id, quantity FROM order_items WHERE order_id = $1`,
       [orderId]
     );
     for (const item of items.rows) {
       await client.query(
-        `UPDATE inventory
-         SET reserved_qty = GREATEST(0, reserved_qty - $1), updated_at = NOW()
+        `UPDATE inventory SET reserved_qty = GREATEST(0, reserved_qty - $1), updated_at = NOW()
          WHERE product_id = $2`,
         [item.quantity, item.product_id]
       );
@@ -321,10 +566,23 @@ const cancelOrder = async (orderId, userId, reason) => {
       [orderId]
     );
 
+    // إذا كان الطلب دفعًا فوريًا، اعكس في ledger
+    if (order.payment_terms === 'cash') {
+      await client.query(
+        `INSERT INTO customer_ledger
+         (customer_id, order_id, transaction_type, debit, credit, balance_after,
+          description, created_by)
+         SELECT customer_id, id, 'cancellation', 0, total_amount,
+                current_balance - total_amount, 'إلغاء طلب', $1
+         FROM orders WHERE id = $2`,
+        [userId, orderId]
+      );
+    }
+
     await client.query(
       `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
        VALUES ($1, $2, 'CANCELLED', $3, $4)`,
-      [orderId, order.status, userId, reason || 'إلغاء من العميل']
+      [orderId, order.status, userId, reason || 'إلغاء']
     );
 
     await client.query('COMMIT');
@@ -339,8 +597,11 @@ const cancelOrder = async (orderId, userId, reason) => {
 
 module.exports = {
   createOrder,
+  approveCreditOrder,
+  rejectCreditOrder,
+  listPendingCreditOrders,
+  checkCreditAvailability,
   getMyOrders,
   getOrderById,
   cancelOrder,
-  calculateShipping,
 };
