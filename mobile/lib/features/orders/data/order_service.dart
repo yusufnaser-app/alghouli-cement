@@ -5,16 +5,31 @@ class OrderService {
   final _client = ApiClient();
 
   Future<Map<String, dynamic>> createOrder({
-    required String addressId,
+    String? addressId,
     required List<Map<String, dynamic>> items,
     String? notes,
+    String deliveryType = 'alghouli_delivery',
+    String? traderTruckPlate,
+    String? traderDriverName,
+    String? traderDriverPhone,
+    String paymentTerms = 'cash',
   }) async {
     try {
-      final res = await _client.post('/orders', data: {
-        'addressId': addressId,
+      final body = <String, dynamic>{
+        'deliveryType': deliveryType,
         'items': items,
-        if (notes != null && notes.isNotEmpty) 'notes': notes,
-      });
+        'paymentTerms': paymentTerms,
+      };
+      if (addressId != null) body['addressId'] = addressId;
+      if (notes != null && notes.isNotEmpty) body['notes'] = notes;
+      if (traderTruckPlate != null && traderTruckPlate.isNotEmpty)
+        body['traderTruckPlate'] = traderTruckPlate;
+      if (traderDriverName != null && traderDriverName.isNotEmpty)
+        body['traderDriverName'] = traderDriverName;
+      if (traderDriverPhone != null && traderDriverPhone.isNotEmpty)
+        body['traderDriverPhone'] = traderDriverPhone;
+
+      final res = await _client.post('/orders', data: body);
       return res.data['data'] as Map<String, dynamic>;
     } on DioException catch (e) {
       throw Exception(handleApiError(e));
