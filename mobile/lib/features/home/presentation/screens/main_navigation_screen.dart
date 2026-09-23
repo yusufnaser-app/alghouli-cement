@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/storage/local_storage.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../cart/data/cart_manager.dart';
 import '../../../cart/presentation/screens/cart_screen.dart';
 import '../../../driver/presentation/screens/driver_home_screen.dart';
@@ -17,9 +18,10 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   final _cart = CartManager.instance;
+  final _client = ApiClient();
   int _index = 0;
-  bool _checkingRole = true;
-  String? _userType;
+  bool _checking = true;
+  String _role = 'customer';
 
   @override
   void initState() {
@@ -30,17 +32,30 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   Future<void> _checkRole() async {
     try {
-      final u = await LocalStorage.getUser();
-      if (u != null) {
-        // نحن نخزن user كـ JSON في storage
-        if (u.contains('"driver"')) {
-          _userType = 'driver';
-        } else {
-          _userType = 'customer';
-        }
+      final res = await _client.get('/auth/me');
+      final data = res.data['data'];
+      final roles = (data['roles'] as List?)?.map((e) => e.toString()).toList() ?? [];
+      if (mounted) {
+        setState(() {
+          _role = roles.contains('driver') ? 'driver' : 'customer';
+          _checking = false;
+        });
       }
-    } catch (_) {}
-    if (mounted) setState(() => _checkingRole = false);
+    } on DioException {
+      if (mounted) {
+        setState(() {
+          _role = 'customer';
+          _checking = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _role = 'customer';
+          _checking = false;
+        });
+      }
+    }
   }
 
   @override
@@ -53,14 +68,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_checkingRole) {
+    if (_checking) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
     }
 
-    // التوجيه حسب الدور
-    if (_userType == 'driver') {
+    if (_role == 'driver') {
       return const DriverHomeScreen();
     }
 
