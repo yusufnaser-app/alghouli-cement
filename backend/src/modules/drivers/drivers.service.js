@@ -47,9 +47,15 @@ const getMyVehicles = async (userId) => {
   const r = await query(
     `SELECT v.*
      FROM vehicles v
-     WHERE v.current_driver_id = (SELECT id FROM drivers WHERE user_id = $1)
+     WHERE 
+        v.current_driver_id = (SELECT id FROM drivers WHERE user_id = $1)
         OR v.owner_trader_id = (
-          SELECT owner_trader_id FROM drivers WHERE user_id = $1
+          SELECT owner_trader_id FROM drivers 
+          WHERE user_id = $1 AND owner_trader_id IS NOT NULL
+        )
+        OR (
+          v.owner_type = 'company'
+          AND (SELECT driver_type FROM drivers WHERE user_id = $1) = 'institution_driver'
         )
      ORDER BY v.created_at DESC`,
     [userId]
