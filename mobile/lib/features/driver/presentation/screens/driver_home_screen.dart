@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/storage/local_storage.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
+import 'request_fax_screen.dart';
+import 'my_faxes_screen.dart';
+import 'my_wallet_screen.dart';
 
 class DriverHomeScreen extends StatefulWidget {
   const DriverHomeScreen({super.key});
@@ -15,11 +18,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final screens = const [
-      _DriverDashboardTab(),
-      _PlaceholderTab(icon: Icons.receipt_long, title: 'فاكساتي'),
-      _PlaceholderTab(icon: Icons.account_balance_wallet, title: 'مستحقاتي'),
-      _PlaceholderTab(icon: Icons.person, title: 'حسابي'),
+    final screens = [
+      _DriverDashboardTab(onNavigate: (i) => setState(() => _index = i)),
+      const MyFaxesScreen(),
+      const MyWalletScreen(),
+      const _DriverProfileTab(),
     ];
 
     return Scaffold(
@@ -58,33 +61,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 }
 
 class _DriverDashboardTab extends StatelessWidget {
-  const _DriverDashboardTab();
+  final Function(int) onNavigate;
+  const _DriverDashboardTab({required this.onNavigate});
 
-  Future<void> _logout(BuildContext context) async {
-    final c = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('تسجيل الخروج؟'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('إلغاء'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('خروج', style: TextStyle(color: AppColors.danger)),
-          ),
-        ],
-      ),
-    );
-    if (c != true) return;
-    await LocalStorage.clearAll();
-    if (!context.mounted) return;
-    Navigator.pushAndRemoveUntil(
+  Future<void> _openRequestFax(BuildContext context) async {
+    final r = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (r) => false,
+      MaterialPageRoute(builder: (_) => const RequestFaxScreen()),
     );
+    if (r == true && context.mounted) {
+      onNavigate(1);
+    }
   }
 
   @override
@@ -93,12 +80,7 @@ class _DriverDashboardTab extends StatelessWidget {
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('لوحة السائق'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () => _logout(context),
-          ),
-        ],
+        automaticallyImplyLeading: false,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -120,34 +102,30 @@ class _DriverDashboardTab extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.local_shipping, color: Colors.white, size: 28),
+                      Icon(Icons.local_shipping, color: Colors.white, size: 26),
                       SizedBox(width: 8),
                       Text('مرحبًا بك',
                           style: TextStyle(color: Colors.white70, fontSize: 14)),
                     ],
                   ),
                   SizedBox(height: 8),
-                  Text('لوحة السائق',
+                  Text('جاهز للعمل اليوم؟',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 24,
+                        fontSize: 22,
                         fontWeight: FontWeight.bold,
                       )),
-                  SizedBox(height: 4),
-                  Text('اختر الخدمة للبدء',
-                      style: TextStyle(color: Colors.white70, fontSize: 12)),
                 ],
               ),
             ),
             const SizedBox(height: 20),
 
-            // زر طلب فاكس
             _bigButton(
               icon: Icons.request_page,
               title: 'طلب فاكس تحميل',
               subtitle: 'اطلب فاكس من المصنع',
               color: AppColors.success,
-              onTap: () {},
+              onTap: () => _openRequestFax(context),
             ),
             const SizedBox(height: 12),
             _bigButton(
@@ -155,7 +133,7 @@ class _DriverDashboardTab extends StatelessWidget {
               title: 'فاكساتي',
               subtitle: 'قائمة طلبات الفاكس',
               color: AppColors.info,
-              onTap: () {},
+              onTap: () => onNavigate(1),
             ),
             const SizedBox(height: 12),
             _bigButton(
@@ -163,15 +141,15 @@ class _DriverDashboardTab extends StatelessWidget {
               title: 'مستحقاتي',
               subtitle: 'رصيدك من النقل',
               color: AppColors.secondary,
-              onTap: () {},
+              onTap: () => onNavigate(2),
             ),
             const SizedBox(height: 12),
             _bigButton(
-              icon: Icons.location_on,
-              title: 'الرحلات المسندة',
-              subtitle: 'الرحلات الجارية',
+              icon: Icons.person,
+              title: 'حسابي',
+              subtitle: 'بياناتك الشخصية',
               color: AppColors.accent,
-              onTap: () {},
+              onTap: () => onNavigate(3),
             ),
           ],
         ),
@@ -231,26 +209,85 @@ class _DriverDashboardTab extends StatelessWidget {
   }
 }
 
-class _PlaceholderTab extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  const _PlaceholderTab({required this.icon, required this.title});
+class _DriverProfileTab extends StatelessWidget {
+  const _DriverProfileTab();
+
+  Future<void> _logout(BuildContext context) async {
+    final c = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('تسجيل الخروج؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('خروج', style: TextStyle(color: AppColors.danger)),
+          ),
+        ],
+      ),
+    );
+    if (c != true) return;
+    await LocalStorage.clearAll();
+    if (!context.mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (r) => false,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 80, color: AppColors.textSecondary),
-            const SizedBox(height: 16),
-            Text('قيد الإنشاء',
-                style: const TextStyle(
-                    fontSize: 18, color: AppColors.textSecondary)),
-          ],
-        ),
+      appBar: AppBar(title: const Text('حسابي')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: AppColors.primary,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Row(
+              children: [
+                CircleAvatar(
+                  radius: 32,
+                  backgroundColor: Colors.white,
+                  child: Icon(Icons.person, size: 40, color: AppColors.primary),
+                ),
+                SizedBox(width: 16),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('مرحبًا بك',
+                        style: TextStyle(fontSize: 16, color: Colors.white70)),
+                    SizedBox(height: 4),
+                    Text('السائق',
+                        style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          Card(
+            color: AppColors.danger.withOpacity(0.05),
+            child: ListTile(
+              leading: const Icon(Icons.logout, color: AppColors.danger),
+              title: const Text('تسجيل الخروج',
+                  style: TextStyle(
+                      color: AppColors.danger, fontWeight: FontWeight.bold)),
+              onTap: () => _logout(context),
+            ),
+          ),
+        ],
       ),
     );
   }
