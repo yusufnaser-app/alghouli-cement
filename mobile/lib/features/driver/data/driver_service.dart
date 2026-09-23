@@ -46,6 +46,27 @@ class DriverService {
     }
   }
 
+  // تفاصيل فاكس
+  Future<Map<String, dynamic>> faxDetails(String faxId) async {
+    try {
+      final res = await _client.get('/faxes/$faxId');
+      return res.data['data'] as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+
+  // تسجيل التحميل
+  Future<void> recordLoading(String faxId, double loadedQty) async {
+    try {
+      await _client.patch('/faxes/$faxId/loading', data: {
+        'loadedQuantity': loadedQty,
+      });
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+
   // مستحقاتي
   Future<Map<String, dynamic>> mySummary() async {
     try {
