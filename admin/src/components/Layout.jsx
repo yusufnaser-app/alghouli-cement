@@ -6,12 +6,12 @@ import client from '../api/client';
 const menuItems = [
   { section: 'الرئيسية', items: [
     { path: '/', label: 'لوحة المعلومات', icon: '📊', roles: [] },
+    { path: '/operations', label: 'مركز التشغيل', icon: '⚡', roles: ['transport', 'admin', 'sales'], badge: 'faxes' },
   ]},
   { section: 'العمليات', items: [
     { path: '/orders', label: 'الطلبات', icon: '📦', roles: ['sales', 'admin'] },
     { path: '/pending-credit', label: 'طلبات بانتظار الموافقة', icon: '⏳', roles: ['admin'], badge: 'pending' },
     { path: '/payments', label: 'المدفوعات', icon: '💰', roles: ['accountant', 'admin'] },
-    { path: '/deliveries', label: 'التوصيل', icon: '🚚', roles: ['transport', 'admin'] },
   ]},
   { section: 'الإدارة', items: [
     { path: '/products', label: 'المنتجات', icon: '📋', roles: ['admin', 'inventory'] },
@@ -23,7 +23,6 @@ const menuItems = [
   ]},
   { section: 'التحليلات', items: [
     { path: '/reports', label: 'التقارير', icon: '📈', roles: ['accountant', 'admin', 'sales'] },
-    { path: '/transport-rates', label: 'أسعار النقل', icon: '💵', roles: ['admin'] },
   ]},
   { section: 'النظام', items: [
     { path: '/settings', label: 'الإعدادات', icon: '⚙️', roles: ['admin'] },
@@ -32,10 +31,10 @@ const menuItems = [
 
 const pageTitles = {
   '/': { title: 'لوحة المعلومات', subtitle: 'نظرة عامة على النشاط' },
+  '/operations': { title: 'مركز التشغيل', subtitle: 'إدارة الفاكسات والرحلات' },
   '/orders': { title: 'الطلبات', subtitle: 'إدارة ومتابعة الطلبات' },
   '/pending-credit': { title: 'طلبات بانتظار الموافقة', subtitle: 'الموافقة على الطلبات الآجلة' },
   '/payments': { title: 'المدفوعات', subtitle: 'مراجعة واعتماد الدفعات' },
-  '/deliveries': { title: 'التوصيل', subtitle: 'إدارة الرحلات والتسليم' },
   '/products': { title: 'المنتجات', subtitle: 'إدارة الأسمنت والأسعار' },
   '/sources': { title: 'المصانع', subtitle: 'إدارة المصانع' },
   '/categories': { title: 'الأنواع', subtitle: 'أنواع الأسمنت والألوان' },
@@ -43,7 +42,6 @@ const pageTitles = {
   '/drivers': { title: 'السائقون', subtitle: 'إدارة السائقين' },
   '/vehicles': { title: 'الشاحنات', subtitle: 'إدارة الشاحنات' },
   '/reports': { title: 'التقارير', subtitle: 'تحليلات المبيعات' },
-  '/transport-rates': { title: 'أسعار النقل', subtitle: 'أسعار التوصيل' },
   '/settings': { title: 'الإعدادات', subtitle: 'إعدادات النظام' },
 };
 
@@ -53,19 +51,24 @@ export default function Layout({ children }) {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [faxCount, setFaxCount] = useState(0);
 
   useEffect(() => {
-    const loadPending = async () => {
+    const loadCounts = async () => {
       try {
-        const res = await client.get('/orders/admin/pending-credit');
-        setPendingCount((res.data.data || []).length);
+        if (hasRole('admin')) {
+          const r = await client.get('/orders/admin/pending-credit');
+          setPendingCount((r.data.data || []).length);
+        }
+        if (hasRole('transport', 'admin', 'sales')) {
+          const r = await client.get('/faxes/pending');
+          setFaxCount((r.data.data || []).length);
+        }
       } catch (_) {}
     };
-    if (hasRole('admin')) {
-      loadPending();
-      const interval = setInterval(loadPending, 30000);
-      return () => clearInterval(interval);
-    }
+    loadCounts();
+    const iv = setInterval(loadCounts, 30000);
+    return () => clearInterval(iv);
   }, [location.pathname]);
 
   const pageInfo = pageTitles[location.pathname] || { title: 'لوحة الإدارة', subtitle: '' };
@@ -92,6 +95,12 @@ export default function Layout({ children }) {
     }[r] || r))
     .join(' • ');
 
+  const getBadge = (badgeType) => {
+    if (badgeType === 'pending' && pendingCount > 0) return pendingCount;
+    if (badgeType === 'faxes' && faxCount > 0) return faxCount;
+    return 0;
+  };
+
   return (
     <div className="layout">
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
@@ -104,43 +113,35 @@ export default function Layout({ children }) {
         </div>
         <nav className="sidebar-nav">
           {menuItems.map((section) => {
-            const visibleItems = section.items.filter((item) =>
+            const visible = section.items.filter((item) =>
               item.roles.length === 0 || hasRole(...item.roles)
             );
-            if (visibleItems.length === 0) return null;
+            if (visible.length === 0) return null;
             return (
               <div key={section.section}>
                 <div className="nav-section-title">{section.section}</div>
-                {visibleItems.map((item) => (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    end={item.path === '/'}
-                    className={({ isActive }) =>
-                      `nav-item ${isActive ? 'active' : ''}`
-                    }
-                    onClick={() => setSidebarOpen(false)}
-                  >
-                    <span className="nav-icon">{item.icon}</span>
-                    <span style={{ flex: 1 }}>{item.label}</span>
-                    {item.badge === 'pending' && pendingCount > 0 && (
-                      <span
-                        style={{
-                          background: '#DC3545',
-                          color: 'white',
-                          borderRadius: 12,
-                          padding: '2px 8px',
-                          fontSize: 11,
-                          fontWeight: 'bold',
-                          minWidth: 24,
-                          textAlign: 'center',
-                        }}
-                      >
-                        {pendingCount}
-                      </span>
-                    )}
-                  </NavLink>
-                ))}
+                {visible.map((item) => {
+                  const badgeCount = item.badge ? getBadge(item.badge) : 0;
+                  return (
+                    <NavLink
+                      key={item.path}
+                      to={item.path}
+                      end={item.path === '/'}
+                      className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                      onClick={() => setSidebarOpen(false)}
+                    >
+                      <span className="nav-icon">{item.icon}</span>
+                      <span style={{ flex: 1 }}>{item.label}</span>
+                      {badgeCount > 0 && (
+                        <span style={{
+                          background: '#DC3545', color: 'white', borderRadius: 12,
+                          padding: '2px 8px', fontSize: 11, fontWeight: 'bold',
+                          minWidth: 24, textAlign: 'center',
+                        }}>{badgeCount}</span>
+                      )}
+                    </NavLink>
+                  );
+                })}
               </div>
             );
           })}
