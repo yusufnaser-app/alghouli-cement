@@ -8,7 +8,8 @@ import '../../../contact/presentation/screens/contact_screen.dart';
 import '../../../invoices/presentation/screens/invoices_screen.dart';
 import '../../../notifications/presentation/screens/notifications_screen.dart';
 import '../../../orders/presentation/screens/orders_list_screen.dart';
-import '../../../wallet/presentation/screens/wallet_screen.dart';
+import '../../../trader/presentation/screens/my_drivers_screen.dart';
+import '../../../trader/presentation/screens/my_vehicles_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -23,7 +24,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('تسجيل الخروج؟'),
-        content: const Text('هل تريد تسجيل الخروج من الحساب؟'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -31,8 +31,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child:
-                const Text('خروج', style: TextStyle(color: AppColors.danger)),
+            child: const Text('خروج', style: TextStyle(color: AppColors.danger)),
           ),
         ],
       ),
@@ -43,7 +42,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (route) => false,
+      (r) => false,
     );
   }
 
@@ -65,8 +64,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 CircleAvatar(
                   radius: 32,
                   backgroundColor: Colors.white,
-                  child:
-                      Icon(Icons.person, size: 40, color: AppColors.primary),
+                  child: Icon(Icons.person, size: 40, color: AppColors.primary),
                 ),
                 SizedBox(width: 16),
                 Expanded(
@@ -74,8 +72,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text('مرحبًا بك',
-                          style: TextStyle(
-                              fontSize: 16, color: Colors.white70)),
+                          style: TextStyle(fontSize: 16, color: Colors.white70)),
                       SizedBox(height: 4),
                       Text('مؤسسة الغولي',
                           style: TextStyle(
@@ -89,21 +86,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
           const SizedBox(height: 20),
+
           _sectionTitle('طلباتي'),
           _item(Icons.receipt_long, 'قائمة الطلبات', () {
             Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const OrdersListScreen()));
           }),
-          _item(Icons.account_balance_wallet, 'محفظتي', () {
-            Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const WalletScreen()));
-          }),
           _item(Icons.receipt, 'الفواتير', () {
             Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const InvoicesScreen()));
           }),
+
           const SizedBox(height: 12),
-          _sectionTitle('حسابي'),
+          _sectionTitle('إدارتي'),
+          _item(Icons.people_outline, 'سائقوني', () {
+            Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const MyDriversScreen()));
+          }),
+          _item(Icons.local_shipping_outlined, 'قاطراتي', () {
+            Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const MyVehiclesScreen()));
+          }),
           _item(Icons.location_on, 'العناوين المحفوظة', () {
             Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const AddressesScreen()));
@@ -114,6 +117,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 MaterialPageRoute(
                     builder: (_) => const NotificationsScreen()));
           }),
+
           const SizedBox(height: 12),
           _sectionTitle('المساعدة'),
           _item(Icons.phone, 'تواصل معنا', () {
@@ -124,24 +128,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const AboutScreen()));
           }),
+
           const SizedBox(height: 20),
           Card(
             color: AppColors.danger.withOpacity(0.05),
             child: ListTile(
-              leading:
-                  const Icon(Icons.logout, color: AppColors.danger),
+              leading: const Icon(Icons.logout, color: AppColors.danger),
               title: const Text('تسجيل الخروج',
                   style: TextStyle(
-                      color: AppColors.danger,
-                      fontWeight: FontWeight.bold)),
+                      color: AppColors.danger, fontWeight: FontWeight.bold)),
               onTap: _logout,
             ),
           ),
           const SizedBox(height: 20),
           const Center(
             child: Text('الإصدار 1.0.0',
-                style: TextStyle(
-                    fontSize: 11, color: AppColors.textSecondary)),
+                style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
           ),
         ],
       ),
