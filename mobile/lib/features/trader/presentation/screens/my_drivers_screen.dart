@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/widgets/primary_button.dart';
 import '../../data/trader_service.dart';
+import 'request_fax_for_driver_screen.dart';
 
 class MyDriversScreen extends StatefulWidget {
   const MyDriversScreen({super.key});
@@ -136,6 +137,16 @@ class _MyDriversScreenState extends State<MyDriversScreen> {
         ),
       ],
     );
+  }
+
+  Future<void> _requestFaxForDriver(Map<String, dynamic> driver) async {
+    final r = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RequestFaxForDriverScreen(initialDriver: driver),
+      ),
+    );
+    if (r == true) _load();
   }
 
   Future<void> _removeDriver(Map<String, dynamic> d) async {

@@ -110,3 +110,15 @@ class TraderService {
     }
   }
 }
+
+extension TraderServiceFactories on TraderService {
+  Future<List<Map<String, dynamic>>> factories() async {
+    try {
+      final res = await ApiClient().get('/sources');
+      final list = (res.data['data'] as List?) ?? [];
+      return list.cast<Map<String, dynamic>>();
+    } catch (e) {
+      return [];
+    }
+  }
+}
