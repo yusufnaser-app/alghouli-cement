@@ -30,6 +30,16 @@ class _MyFaxesScreenState extends State<MyFaxesScreen> {
     setState(() => _loading = false);
   }
 
+  Future<void> _openFaxDetails(Map<String, dynamic> f) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FaxDetailsScreen(faxId: f['id'], initialData: f),
+      ),
+    );
+    _load();
+  }
+
   String _statusAr(String s) {
     return {
       'REQUESTED': 'بانتظار الاعتماد',
@@ -67,16 +77,6 @@ class _MyFaxesScreenState extends State<MyFaxesScreen> {
         );
   }
 
-  Future<void> _openFaxDetails(Map<String, dynamic> f) async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => FaxDetailsScreen(faxId: f['id'], initialData: f),
-      ),
-    );
-    _load();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -97,12 +97,10 @@ class _MyFaxesScreenState extends State<MyFaxesScreen> {
                           size: 80, color: AppColors.textSecondary.withOpacity(0.5)),
                       const SizedBox(height: 16),
                       const Text('لا توجد فاكسات',
-                          style: TextStyle(
-                              fontSize: 16, color: AppColors.textSecondary)),
+                          style: TextStyle(fontSize: 16, color: AppColors.textSecondary)),
                       const SizedBox(height: 8),
                       const Text('اضغط على "طلب فاكس" للبدء',
-                          style: TextStyle(
-                              fontSize: 12, color: AppColors.textSecondary)),
+                          style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                     ],
                   ),
                 )
@@ -119,78 +117,64 @@ class _MyFaxesScreenState extends State<MyFaxesScreen> {
                         onTap: () => _openFaxDetails(f),
                         borderRadius: BorderRadius.circular(14),
                         child: Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: color.withOpacity(0.4), width: 2),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // رأس البطاقة
-                              Row(
-                                children: [
-                                  Container(
-                                    width: 40,
-                                    height: 40,
-                                    decoration: BoxDecoration(
-                                      color: color.withOpacity(0.15),
-                                      borderRadius: BorderRadius.circular(10),
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: color.withOpacity(0.4), width: 2),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 40,
+                                      height: 40,
+                                      decoration: BoxDecoration(
+                                        color: color.withOpacity(0.15),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Icon(_statusIcon(status), color: color, size: 20),
                                     ),
-                                    child: Icon(_statusIcon(status), color: color, size: 20),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(f['factory_name'] ?? '—',
-                                            style: const TextStyle(
-                                                fontSize: 15,
-                                                fontWeight: FontWeight.bold)),
-                                        Text(
-                                          '${f['plate_number'] ?? ''} • ${_fmt(f['requested_quantity'])} كيس',
-                                          style: const TextStyle(
-                                              fontSize: 12,
-                                              color: AppColors.textSecondary),
-                                        ),
-                                      ],
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(f['factory_name'] ?? '—',
+                                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                                          Text(
+                                            '${f['plate_number'] ?? ''} • ${_fmt(f['requested_quantity'])} كيس',
+                                            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 10, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: color.withOpacity(0.15),
-                                      borderRadius: BorderRadius.circular(12),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: color.withOpacity(0.15),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        _statusAr(status),
+                                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color),
+                                      ),
                                     ),
-                                    child: Text(
-                                      _statusAr(status),
-                                      style: TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                          color: color),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const Divider(height: 20),
-
-                              // تفاصيل
-                              if (f['fax_number'] != null)
-                                _row(Icons.description, 'رقم الفاكس',
-                                    f['fax_number'].toString()),
-                              if (f['route'] != null)
-                                _row(Icons.route, 'خط السير', f['route'].toString()),
-                              _row(
-                                Icons.calendar_today,
-                                'تاريخ الطلب',
-                                f['requested_at']?.toString().substring(0, 10) ?? '—',
-                              ),
-                            ],
+                                  ],
+                                ),
+                                const Divider(height: 20),
+                                if (f['fax_number'] != null)
+                                  _row(Icons.description, 'رقم الفاكس', f['fax_number'].toString()),
+                                if (f['route'] != null)
+                                  _row(Icons.route, 'خط السير', f['route'].toString()),
+                                _row(Icons.calendar_today, 'تاريخ الطلب',
+                                    f['requested_at']?.toString().substring(0, 10) ?? '—'),
+                              ],
+                            ),
                           ),
                         ),
                       );
