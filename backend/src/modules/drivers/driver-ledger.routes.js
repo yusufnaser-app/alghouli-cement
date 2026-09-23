@@ -1,13 +1,15 @@
 const express = require('express');
 const controller = require('./driver-ledger.controller');
+const driversController = require('./drivers.controller');
 const { authenticate, requireRoles } = require('../../middlewares/auth');
 
 const router = express.Router();
 router.use(authenticate);
 
-// السائق — مهم: قبل /:driverId
+// السائق — قبل /:driverId
 router.get('/me/summary', requireRoles('driver'), controller.mySummary);
 router.get('/me/ledger', requireRoles('driver'), controller.myLedger);
+router.get('/me/vehicles', requireRoles('driver'), driversController.myVehicles);
 
 // الموظف
 router.get('/', requireRoles('admin', 'transport', 'accountant'), controller.list);

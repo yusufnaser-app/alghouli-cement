@@ -101,7 +101,7 @@ class DriverService {
 
   Future<List<Map<String, dynamic>>> vehicles() async {
     try {
-      final res = await _client.get('/vehicles');
+      final res = await _client.get('/drivers/me/vehicles');
       final list = (res.data['data'] as List?) ?? [];
       return list.cast<Map<String, dynamic>>();
     } on DioException catch (e) {

@@ -35,3 +35,18 @@ const getById = asyncHandler(async (req, res) => {
 });
 
 module.exports = { list, create, update, getById };
+
+// قاطراتي
+const myVehicles = async (req, res) => {
+  try {
+    const service = require('./drivers.service');
+    const list = await service.getMyVehicles(req.user.id);
+    const response = require('../../utils/response');
+    return response.success(res, list, 'قاطراتي');
+  } catch (e) {
+    const response = require('../../utils/response');
+    return response.error(res, e.message, 500);
+  }
+};
+
+module.exports.myVehicles = myVehicles;

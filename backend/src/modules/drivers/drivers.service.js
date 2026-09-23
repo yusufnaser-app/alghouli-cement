@@ -40,3 +40,21 @@ const getById = async (id) => {
 };
 
 module.exports = { list, create, update, getById };
+
+// قاطرات السائق الحالي
+const getMyVehicles = async (userId) => {
+  const { query } = require('../../config/db');
+  const r = await query(
+    `SELECT v.*
+     FROM vehicles v
+     WHERE v.current_driver_id = (SELECT id FROM drivers WHERE user_id = $1)
+        OR v.owner_trader_id = (
+          SELECT owner_trader_id FROM drivers WHERE user_id = $1
+        )
+     ORDER BY v.created_at DESC`,
+    [userId]
+  );
+  return r.rows;
+};
+
+module.exports.getMyVehicles = getMyVehicles;
