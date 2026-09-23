@@ -91,8 +91,28 @@ String handleApiError(dynamic error) {
   if (error is DioException) {
     if (error.response?.data is Map) {
       final data = error.response!.data as Map;
-      if (data['message'] != null) return data['message'].toString();
+      
+      // عرض رسالة الخطأ الأساسية
+      final mainMsg = data['message']?.toString();
+      
+      // إضافة تفاصيل حقول التحقق (Zod)
+      if (data['errors'] is List && (data['errors'] as List).isNotEmpty) {
+        final details = (data['errors'] as List)
+            .map((e) {
+              if (e is Map) {
+                final field = e['field'] ?? e['path'] ?? '';
+                final msg = e['message'] ?? '';
+                return '$field: $msg';
+              }
+              return e.toString();
+            })
+            .join('\n');
+        return '$mainMsg\n$details';
+      }
+      
+      if (mainMsg != null) return mainMsg;
     }
+    
     final type = error.type;
     if (type == DioExceptionType.connectionTimeout ||
         type == DioExceptionType.receiveTimeout ||
