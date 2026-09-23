@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../data/driver_service.dart';
+import 'fax_details_screen.dart';
 
 class MyFaxesScreen extends StatefulWidget {
   const MyFaxesScreen({super.key});
@@ -66,6 +67,16 @@ class _MyFaxesScreenState extends State<MyFaxesScreen> {
         );
   }
 
+  Future<void> _openFaxDetails(Map<String, dynamic> f) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FaxDetailsScreen(faxId: f['id'], initialData: f),
+      ),
+    );
+    _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -104,7 +115,10 @@ class _MyFaxesScreenState extends State<MyFaxesScreen> {
                       final f = _items[i];
                       final status = f['status'] ?? '';
                       final color = _statusColor(status);
-                      return Container(
+                      return InkWell(
+                        onTap: () => _openFaxDetails(f),
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
                         margin: const EdgeInsets.only(bottom: 12),
                         decoration: BoxDecoration(
                           color: Colors.white,
