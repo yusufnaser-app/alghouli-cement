@@ -50,6 +50,16 @@ class _MyDriversScreenState extends State<MyDriversScreen> {
     }
   }
 
+  Future<void> _requestFaxForDriver(Map<String, dynamic> driver) async {
+    final r = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RequestFaxForDriverScreen(initialDriver: driver),
+      ),
+    );
+    if (r == true) _load();
+  }
+
   void _showCredentials(Map<String, dynamic> data) {
     final creds = data['credentials'] as Map<String, dynamic>?;
     if (creds == null) return;
@@ -74,10 +84,8 @@ class _MyDriversScreenState extends State<MyDriversScreen> {
             const SizedBox(height: 8),
             _credRow('كلمة المرور', creds['password']?.toString() ?? ''),
             const SizedBox(height: 12),
-            const Text(
-              'احتفظ بهذه البيانات وأرسلها للسائق',
-              style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
-            ),
+            const Text('احتفظ بهذه البيانات وأرسلها للسائق',
+                style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
           ],
         ),
         actions: [
@@ -96,8 +104,7 @@ class _MyDriversScreenState extends State<MyDriversScreen> {
         SizedBox(
           width: 90,
           child: Text('$label:',
-              style: const TextStyle(
-                  fontSize: 13, color: AppColors.textSecondary)),
+              style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
         ),
         Expanded(
           child: Container(
@@ -109,13 +116,11 @@ class _MyDriversScreenState extends State<MyDriversScreen> {
             child: Row(
               children: [
                 Expanded(
-                  child: SelectableText(
-                    value,
-                    style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        fontFamily: 'monospace'),
-                  ),
+                  child: SelectableText(value,
+                      style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'monospace')),
                 ),
                 IconButton(
                   icon: const Icon(Icons.copy, size: 16),
@@ -137,16 +142,6 @@ class _MyDriversScreenState extends State<MyDriversScreen> {
         ),
       ],
     );
-  }
-
-  Future<void> _requestFaxForDriver(Map<String, dynamic> driver) async {
-    final r = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => RequestFaxForDriverScreen(initialDriver: driver),
-      ),
-    );
-    if (r == true) _load();
   }
 
   Future<void> _removeDriver(Map<String, dynamic> d) async {
@@ -171,9 +166,6 @@ class _MyDriversScreenState extends State<MyDriversScreen> {
     try {
       await _service.removeDriver(d['id']);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم الحذف'), backgroundColor: AppColors.success),
-      );
       _load();
     } catch (e) {
       if (!mounted) return;
@@ -231,10 +223,6 @@ class _MyDriversScreenState extends State<MyDriversScreen> {
                           const Text('لا يوجد سائقون',
                               style: TextStyle(
                                   fontSize: 16, color: AppColors.textSecondary)),
-                          const SizedBox(height: 8),
-                          const Text('أضف سائقيك لتتمكن من طلب الفاكس لهم',
-                              style: TextStyle(
-                                  fontSize: 12, color: AppColors.textSecondary)),
                         ],
                       ),
                     )
@@ -253,63 +241,87 @@ class _MyDriversScreenState extends State<MyDriversScreen> {
                               borderRadius: BorderRadius.circular(14),
                               border: Border.all(color: AppColors.divider),
                             ),
-                            child: Row(
+                            child: Column(
                               children: [
-                                Container(
-                                  width: 48,
-                                  height: 48,
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary.withOpacity(0.12),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: const Icon(Icons.person,
-                                      color: AppColors.primary, size: 26),
-                                ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(d['full_name'] ?? '',
-                                          style: const TextStyle(
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.bold)),
-                                      const SizedBox(height: 4),
-                                      Row(
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 48,
+                                      height: 48,
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary.withOpacity(0.12),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: const Icon(Icons.person,
+                                          color: AppColors.primary, size: 26),
+                                    ),
+                                    const SizedBox(width: 14),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
-                                          const Icon(Icons.phone,
-                                              size: 12,
-                                              color: AppColors.textSecondary),
-                                          const SizedBox(width: 4),
-                                          Text(d['phone'] ?? '',
+                                          Text(d['full_name'] ?? '',
                                               style: const TextStyle(
-                                                  fontSize: 12,
-                                                  color: AppColors.textSecondary)),
+                                                  fontSize: 15,
+                                                  fontWeight: FontWeight.bold)),
+                                          const SizedBox(height: 4),
+                                          Row(
+                                            children: [
+                                              const Icon(Icons.phone,
+                                                  size: 12,
+                                                  color: AppColors.textSecondary),
+                                              const SizedBox(width: 4),
+                                              Text(d['phone'] ?? '',
+                                                  style: const TextStyle(
+                                                      fontSize: 12,
+                                                      color: AppColors.textSecondary)),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Row(
+                                            children: [
+                                              _miniChip(
+                                                Icons.local_shipping,
+                                                '${d['vehicles_count'] ?? 0} قاطرة',
+                                                AppColors.info,
+                                              ),
+                                              const SizedBox(width: 6),
+                                              _miniChip(
+                                                Icons.receipt_long,
+                                                '${d['trips_count'] ?? 0} رحلة',
+                                                AppColors.secondary,
+                                              ),
+                                            ],
+                                          ),
                                         ],
                                       ),
-                                      const SizedBox(height: 4),
-                                      Row(
-                                        children: [
-                                          _miniChip(
-                                            Icons.local_shipping,
-                                            '${d['vehicles_count'] ?? 0} قاطرة',
-                                            AppColors.info,
-                                          ),
-                                          const SizedBox(width: 6),
-                                          _miniChip(
-                                            Icons.receipt_long,
-                                            '${d['trips_count'] ?? 0} رحلة',
-                                            AppColors.secondary,
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete_outline,
+                                          color: AppColors.danger),
+                                      onPressed: () => _removeDriver(d),
+                                    ),
+                                  ],
                                 ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline,
-                                      color: AppColors.danger),
-                                  onPressed: () => _removeDriver(d),
+                                const SizedBox(height: 12),
+                                const Divider(height: 1),
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                    onPressed: () => _requestFaxForDriver(d),
+                                    icon: const Icon(Icons.request_page, size: 18),
+                                    label: const Text('طلب فاكس له'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppColors.success,
+                                      foregroundColor: Colors.white,
+                                      minimumSize: const Size(0, 42),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ],
                             ),
@@ -441,11 +453,9 @@ class _AddDriverScreenState extends State<AddDriverScreen> {
               ),
               const SizedBox(height: 16),
             ],
-
             const Text('بيانات السائق',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
-
             const Text('الاسم الكامل *',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
             const SizedBox(height: 6),
@@ -457,7 +467,6 @@ class _AddDriverScreenState extends State<AddDriverScreen> {
               ),
             ),
             const SizedBox(height: 14),
-
             const Text('رقم الهاتف *',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
             const SizedBox(height: 6),
@@ -470,7 +479,6 @@ class _AddDriverScreenState extends State<AddDriverScreen> {
               ),
             ),
             const SizedBox(height: 14),
-
             const Text('كلمة المرور (اختياري)',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
             const SizedBox(height: 6),
@@ -481,22 +489,17 @@ class _AddDriverScreenState extends State<AddDriverScreen> {
                 prefixIcon: Icon(Icons.lock_outline),
               ),
             ),
-
             const SizedBox(height: 24),
             const Divider(),
             const SizedBox(height: 16),
-
             SwitchListTile(
               value: _addVehicle,
               onChanged: (v) => setState(() => _addVehicle = v),
               title: const Text('إضافة قاطرة مع السائق',
                   style: TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: const Text('يمكنك إضافتها لاحقًا',
-                  style: TextStyle(fontSize: 11)),
               activeColor: AppColors.primary,
               contentPadding: EdgeInsets.zero,
             ),
-
             if (_addVehicle) ...[
               const SizedBox(height: 12),
               const Text('رقم القاطرة',
@@ -510,7 +513,6 @@ class _AddDriverScreenState extends State<AddDriverScreen> {
                 ),
               ),
               const SizedBox(height: 14),
-
               const Text('نوع القاطرة',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
               const SizedBox(height: 6),
@@ -528,7 +530,6 @@ class _AddDriverScreenState extends State<AddDriverScreen> {
                 onChanged: (v) => setState(() => _vehicleType = v!),
               ),
               const SizedBox(height: 14),
-
               const Text('الحمولة (طن)',
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
               const SizedBox(height: 6),
@@ -541,7 +542,6 @@ class _AddDriverScreenState extends State<AddDriverScreen> {
                 ),
               ),
             ],
-
             const SizedBox(height: 32),
             PrimaryButton(
               text: 'إضافة السائق',
