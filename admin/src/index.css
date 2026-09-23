@@ -623,3 +623,11 @@ table tr:hover {
 .justify-between { justify-content: space-between; }
 .gap-1 { gap: 8px; }
 .gap-2 { gap: 16px; }
+
+/* ============ إضافات جديدة ============ */
+.badge-warning { background: #FFC107; color: #212121; }
+
+.stat-icon.blue { background: #E3F2FD; color: #1565C0; }
+.stat-icon.red { background: #FFEBEE; color: #C62828; }
+.stat-icon.green { background: #E8F5E9; color: #2E7D32; }
+.stat-icon.orange { background: #FFF3E0; color: #EF6C00; }

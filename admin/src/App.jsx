@@ -7,8 +7,11 @@ import Sources from './pages/sources/Sources';
 import Categories from './pages/categories/Categories';
 import Products from './pages/products/Products';
 import Orders from './pages/orders/Orders';
+import PendingCredit from './pages/pendingCredit/PendingCredit';
 import Payments from './pages/payments/Payments';
 import Customers from './pages/customers/Customers';
+import Traders from './pages/traders/Traders';
+import TraderDetails from './pages/traderDetails/TraderDetails';
 import Drivers from './pages/drivers/Drivers';
 import Vehicles from './pages/vehicles/Vehicles';
 import Reports from './pages/reports/Reports';
@@ -48,14 +51,17 @@ export default function App() {
           <Route path="/sources" element={<ProtectedRoute><Sources /></ProtectedRoute>} />
           <Route path="/categories" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
           <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
+          <Route path="/pending-credit" element={<ProtectedRoute><PendingCredit /></ProtectedRoute>} />
           <Route path="/payments" element={<ProtectedRoute><Payments /></ProtectedRoute>} />
           <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
+          <Route path="/traders" element={<ProtectedRoute><Traders /></ProtectedRoute>} />
+          <Route path="/traders/:id" element={<ProtectedRoute><TraderDetails /></ProtectedRoute>} />
           <Route path="/drivers" element={<ProtectedRoute><Drivers /></ProtectedRoute>} />
           <Route path="/vehicles" element={<ProtectedRoute><Vehicles /></ProtectedRoute>} />
           <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
           <Route path="/deliveries" element={<ProtectedRoute><Placeholder icon="🚚" title="التوصيل" /></ProtectedRoute>} />
-          <Route path="/inventory" element={<ProtectedRoute><Placeholder icon="📦" title="المخزون" /></ProtectedRoute>} />
+          <Route path="/transport-rates" element={<ProtectedRoute><Placeholder icon="💵" title="أسعار النقل" /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>

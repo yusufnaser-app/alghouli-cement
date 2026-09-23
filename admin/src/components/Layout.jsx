@@ -1,6 +1,7 @@
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import client from '../api/client';
 
 const menuItems = [
   { section: 'الرئيسية', items: [
@@ -8,6 +9,7 @@ const menuItems = [
   ]},
   { section: 'العمليات', items: [
     { path: '/orders', label: 'الطلبات', icon: '📦', roles: ['sales', 'admin'] },
+    { path: '/pending-credit', label: 'طلبات بانتظار الموافقة', icon: '⏳', roles: ['admin'], badge: 'pending' },
     { path: '/payments', label: 'المدفوعات', icon: '💰', roles: ['accountant', 'admin'] },
     { path: '/deliveries', label: 'التوصيل', icon: '🚚', roles: ['transport', 'admin'] },
   ]},
@@ -15,13 +17,13 @@ const menuItems = [
     { path: '/products', label: 'المنتجات', icon: '📋', roles: ['admin', 'inventory'] },
     { path: '/sources', label: 'المصانع', icon: '🏭', roles: ['admin'] },
     { path: '/categories', label: 'الأنواع', icon: '🎨', roles: ['admin'] },
-    { path: '/customers', label: 'العملاء', icon: '👥', roles: ['sales', 'admin'] },
+    { path: '/traders', label: 'الموزعون', icon: '👥', roles: ['sales', 'accountant', 'admin'] },
     { path: '/drivers', label: 'السائقون', icon: '🧑‍✈️', roles: ['transport', 'admin'] },
     { path: '/vehicles', label: 'الشاحنات', icon: '🚛', roles: ['transport', 'admin'] },
   ]},
   { section: 'التحليلات', items: [
     { path: '/reports', label: 'التقارير', icon: '📈', roles: ['accountant', 'admin', 'sales'] },
-    { path: '/inventory', label: 'المخزون', icon: '📦', roles: ['inventory', 'admin'] },
+    { path: '/transport-rates', label: 'أسعار النقل', icon: '💵', roles: ['admin'] },
   ]},
   { section: 'النظام', items: [
     { path: '/settings', label: 'الإعدادات', icon: '⚙️', roles: ['admin'] },
@@ -31,16 +33,17 @@ const menuItems = [
 const pageTitles = {
   '/': { title: 'لوحة المعلومات', subtitle: 'نظرة عامة على النشاط' },
   '/orders': { title: 'الطلبات', subtitle: 'إدارة ومتابعة الطلبات' },
+  '/pending-credit': { title: 'طلبات بانتظار الموافقة', subtitle: 'الموافقة على الطلبات الآجلة' },
   '/payments': { title: 'المدفوعات', subtitle: 'مراجعة واعتماد الدفعات' },
   '/deliveries': { title: 'التوصيل', subtitle: 'إدارة الرحلات والتسليم' },
   '/products': { title: 'المنتجات', subtitle: 'إدارة الأسمنت والأسعار' },
   '/sources': { title: 'المصانع', subtitle: 'إدارة المصانع' },
   '/categories': { title: 'الأنواع', subtitle: 'أنواع الأسمنت والألوان' },
-  '/customers': { title: 'العملاء', subtitle: 'قائمة العملاء' },
+  '/traders': { title: 'الموزعون', subtitle: 'التجار وأرصدتهم' },
   '/drivers': { title: 'السائقون', subtitle: 'إدارة السائقين' },
   '/vehicles': { title: 'الشاحنات', subtitle: 'إدارة الشاحنات' },
   '/reports': { title: 'التقارير', subtitle: 'تحليلات المبيعات' },
-  '/inventory': { title: 'المخزون', subtitle: 'حركات المخزون' },
+  '/transport-rates': { title: 'أسعار النقل', subtitle: 'أسعار التوصيل' },
   '/settings': { title: 'الإعدادات', subtitle: 'إعدادات النظام' },
 };
 
@@ -49,6 +52,21 @@ export default function Layout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  useEffect(() => {
+    const loadPending = async () => {
+      try {
+        const res = await client.get('/orders/admin/pending-credit');
+        setPendingCount((res.data.data || []).length);
+      } catch (_) {}
+    };
+    if (hasRole('admin')) {
+      loadPending();
+      const interval = setInterval(loadPending, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [location.pathname]);
 
   const pageInfo = pageTitles[location.pathname] || { title: 'لوحة الإدارة', subtitle: '' };
 
@@ -104,7 +122,23 @@ export default function Layout({ children }) {
                     onClick={() => setSidebarOpen(false)}
                   >
                     <span className="nav-icon">{item.icon}</span>
-                    <span>{item.label}</span>
+                    <span style={{ flex: 1 }}>{item.label}</span>
+                    {item.badge === 'pending' && pendingCount > 0 && (
+                      <span
+                        style={{
+                          background: '#DC3545',
+                          color: 'white',
+                          borderRadius: 12,
+                          padding: '2px 8px',
+                          fontSize: 11,
+                          fontWeight: 'bold',
+                          minWidth: 24,
+                          textAlign: 'center',
+                        }}
+                      >
+                        {pendingCount}
+                      </span>
+                    )}
                   </NavLink>
                 ))}
               </div>
