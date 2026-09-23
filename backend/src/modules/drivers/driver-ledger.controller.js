@@ -63,3 +63,11 @@ module.exports = {
   list, getLedger, getSummary,
   recordPayment, recordAdvance, recordDeduction,
 };
+
+const myProfile = asyncHandler(async (req, res) => {
+  const p = await service.getMyProfile(req.user.id);
+  if (!p) return response.error(res, 'السائق غير موجود', 404);
+  return response.success(res, p, 'ملفي الشخصي');
+});
+
+module.exports.myProfile = myProfile;
