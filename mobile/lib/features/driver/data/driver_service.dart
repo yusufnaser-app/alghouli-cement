@@ -89,6 +89,15 @@ class DriverService {
   }
 
   // قوائم مساعدة
+  Future<Map<String, dynamic>> myProfile() async {
+    try {
+      final res = await _client.get('/drivers/me/profile');
+      return res.data['data'] as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+
   Future<List<Map<String, dynamic>>> factories() async {
     try {
       final res = await _client.get('/sources');
