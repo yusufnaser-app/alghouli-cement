@@ -3,6 +3,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/storage/local_storage.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
 import '../../data/driver_service.dart';
+import 'edit_driver_profile_screen.dart';
 
 class DriverProfileScreen extends StatefulWidget {
   const DriverProfileScreen({super.key});
@@ -80,6 +81,11 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
       appBar: AppBar(
         title: const Text('حسابي'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.edit),
+            tooltip: 'تعديل البيانات',
+            onPressed: _openEdit,
+          ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),
