@@ -71,3 +71,11 @@ const myProfile = asyncHandler(async (req, res) => {
 });
 
 module.exports.myProfile = myProfile;
+
+const myProfile = asyncHandler(async (req, res) => {
+  const p = await service.getMyProfile(req.user.id);
+  if (!p) return response.error(res, 'السائق غير موجود', 404);
+  return response.success(res, p, 'ملفي الشخصي');
+});
+
+module.exports.myProfile = myProfile;
