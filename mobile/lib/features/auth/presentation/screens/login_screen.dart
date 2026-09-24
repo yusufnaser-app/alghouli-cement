@@ -5,6 +5,7 @@ import '../../../../core/widgets/primary_button.dart';
 import '../../data/auth_service.dart';
 import '../../../home/presentation/screens/main_navigation_screen.dart';
 import 'register_screen.dart';
+import 'register_driver_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -152,9 +153,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   prefixIcon: const Icon(Icons.lock_outline),
                   suffixIcon: IconButton(
                     icon: Icon(
-                      _obscure
-                          ? Icons.visibility_off
-                          : Icons.visibility,
+                      _obscure ? Icons.visibility_off : Icons.visibility,
                       color: AppColors.textSecondary,
                     ),
                     onPressed: () => setState(() => _obscure = !_obscure),
@@ -168,26 +167,68 @@ class _LoginScreenState extends State<LoginScreen> {
                 isLoading: _loading,
                 onPressed: _login,
               ),
+              const SizedBox(height: 24),
+              const Divider(),
               const SizedBox(height: 16),
+
+              // === تسجيل كتاجر ===
               Center(
-                child: TextButton(
+                child: TextButton.icon(
                   onPressed: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (_) => const RegisterScreen()),
+                        builder: (_) => const RegisterScreen(),
+                      ),
                     );
                   },
-                  child: const Text(
-                    'ليس لديك حساب؟ سجّل الآن',
+                  icon: const Icon(Icons.storefront,
+                      color: AppColors.primary),
+                  label: const Text(
+                    'تسجيل كتاجر / عميل',
                     style: TextStyle(
                       color: AppColors.primary,
                       fontWeight: FontWeight.bold,
+                      fontSize: 15,
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 24),
+
+              // === تسجيل كسائق ===
+              const SizedBox(height: 8),
+              Center(
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const RegisterDriverScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.local_shipping,
+                      color: AppColors.success),
+                  label: const Text(
+                    'تسجيل كسائق',
+                    style: TextStyle(
+                      color: AppColors.success,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(
+                        color: AppColors.success, width: 1.5),
+                    minimumSize: const Size(240, 48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 30),
               Center(
                 child: Text(
                   'الإصدار 1.0.0',

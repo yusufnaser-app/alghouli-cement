@@ -21,20 +21,38 @@ class AuthService {
   Future<Map<String, dynamic>> register({
     required String fullName,
     required String phone,
-    required String customerType,
-    required String governorate,
+    String userType = 'customer',
+    // عميل
+    String? customerType,
+    String? governorate,
     String? area,
     String? address,
+    // سائق
+    String? password,
+    String? nationalId,
+    String? vehicleType,
+    String? plateNumber,
   }) async {
     try {
-      final res = await _client.post('/auth/register', data: {
+      final body = <String, dynamic>{
+        'userType': userType,
         'fullName': fullName,
         'phone': phone,
-        'customerType': customerType,
-        'governorate': governorate,
-        if (area != null) 'area': area,
-        if (address != null) 'address': address,
-      });
+      };
+
+      if (userType == 'driver') {
+        body['password'] = password;
+        body['nationalId'] = nationalId;
+        body['vehicleType'] = vehicleType;
+        body['plateNumber'] = plateNumber;
+      } else {
+        body['customerType'] = customerType;
+        body['governorate'] = governorate;
+        if (area != null && area.isNotEmpty) body['area'] = area;
+        if (address != null && address.isNotEmpty) body['address'] = address;
+      }
+
+      final res = await _client.post('/auth/register', data: body);
       return res.data['data'] as Map<String, dynamic>;
     } on DioException catch (e) {
       throw Exception(handleApiError(e));
