@@ -5,6 +5,7 @@ import '../../../auth/presentation/screens/login_screen.dart';
 import 'request_fax_screen.dart';
 import 'my_faxes_screen.dart';
 import 'my_wallet_screen.dart';
+import 'driver_profile_screen.dart';
 
 class DriverHomeScreen extends StatefulWidget {
   const DriverHomeScreen({super.key});
@@ -22,7 +23,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       _DriverDashboardTab(onNavigate: (i) => setState(() => _index = i)),
       const MyFaxesScreen(),
       const MyWalletScreen(),
-      const _DriverProfileTab(),
+      const DriverProfileScreen(),
     ];
 
     return Scaffold(
@@ -209,86 +210,3 @@ class _DriverDashboardTab extends StatelessWidget {
   }
 }
 
-class _DriverProfileTab extends StatelessWidget {
-  const _DriverProfileTab();
-
-  Future<void> _logout(BuildContext context) async {
-    final c = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('تسجيل الخروج؟'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('إلغاء'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('خروج', style: TextStyle(color: AppColors.danger)),
-          ),
-        ],
-      ),
-    );
-    if (c != true) return;
-    await LocalStorage.clearAll();
-    if (!context.mounted) return;
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (r) => false,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('حسابي')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: AppColors.primary,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: const Row(
-              children: [
-                CircleAvatar(
-                  radius: 32,
-                  backgroundColor: Colors.white,
-                  child: Icon(Icons.person, size: 40, color: AppColors.primary),
-                ),
-                SizedBox(width: 16),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('مرحبًا بك',
-                        style: TextStyle(fontSize: 16, color: Colors.white70)),
-                    SizedBox(height: 4),
-                    Text('السائق',
-                        style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          Card(
-            color: AppColors.danger.withOpacity(0.05),
-            child: ListTile(
-              leading: const Icon(Icons.logout, color: AppColors.danger),
-              title: const Text('تسجيل الخروج',
-                  style: TextStyle(
-                      color: AppColors.danger, fontWeight: FontWeight.bold)),
-              onTap: () => _logout(context),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
