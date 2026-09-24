@@ -10,6 +10,18 @@ const paymentSchema = z.object({
   description: z.string().optional(),
 });
 
+// ============ السائق ============
+const myProfile = asyncHandler(async (req, res) => {
+  const p = await service.getMyProfile(req.user.id);
+  if (!p) return response.error(res, 'السائق غير موجود', 404);
+  return response.success(res, p, 'ملفي الشخصي');
+});
+
+const updateMyProfile = asyncHandler(async (req, res) => {
+  const r = await service.updateMyProfile(req.user.id, req.body);
+  return response.success(res, r, 'تم تحديث البيانات');
+});
+
 const mySummary = asyncHandler(async (req, res) => {
   const driverId = await service.getDriverIdFromUser(req.user.id);
   if (!driverId) return response.error(res, 'السائق غير موجود', 404);
@@ -24,6 +36,7 @@ const myLedger = asyncHandler(async (req, res) => {
   return response.success(res, l, 'كشف حسابي');
 });
 
+// ============ الموظف ============
 const list = asyncHandler(async (req, res) => {
   const list = await service.listDriversWithBalance(req.query);
   return response.success(res, list, 'السائقون');
@@ -59,30 +72,8 @@ const recordDeduction = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  myProfile, updateMyProfile,
   mySummary, myLedger,
   list, getLedger, getSummary,
   recordPayment, recordAdvance, recordDeduction,
 };
-
-const myProfile = asyncHandler(async (req, res) => {
-  const p = await service.getMyProfile(req.user.id);
-  if (!p) return response.error(res, 'السائق غير موجود', 404);
-  return response.success(res, p, 'ملفي الشخصي');
-});
-
-module.exports.myProfile = myProfile;
-
-const myProfile = asyncHandler(async (req, res) => {
-  const p = await service.getMyProfile(req.user.id);
-  if (!p) return response.error(res, 'السائق غير موجود', 404);
-  return response.success(res, p, 'ملفي الشخصي');
-});
-
-module.exports.myProfile = myProfile;
-
-const updateMyProfile = asyncHandler(async (req, res) => {
-  const r = await service.updateMyProfile(req.user.id, req.body);
-  return response.success(res, r, 'تم تحديث البيانات');
-});
-
-module.exports.updateMyProfile = updateMyProfile;

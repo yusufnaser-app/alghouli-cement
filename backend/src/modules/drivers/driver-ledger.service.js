@@ -265,32 +265,6 @@ const getMyProfile = async (userId) => {
 
 module.exports.getMyProfile = getMyProfile;
 
-// الملف الشخصي للسائق
-const getMyProfile = async (userId) => {
-  const { query } = require('../../config/db');
-  const r = await query(
-    `SELECT d.id, d.full_name, d.phone, d.driver_type, d.status,
-            d.approval_status, d.current_balance,
-            d.national_id, d.address, d.photo_url,
-            d.license_number, d.license_expiry,
-            u.email,
-            (SELECT json_agg(json_build_object(
-              'id', v.id, 'plate_number', v.plate_number,
-              'vehicle_type', v.vehicle_type, 'capacity_tons', v.capacity_tons,
-              'capacity_bags', v.capacity_bags, 'operating_status', v.operating_status
-            ))
-            FROM vehicles v
-            WHERE v.current_driver_id = d.id) AS vehicles
-     FROM drivers d
-     JOIN users u ON u.id = d.user_id
-     WHERE d.user_id = $1`,
-    [userId]
-  );
-  return r.rows[0] || null;
-};
-
-module.exports.getMyProfile = getMyProfile;
-
 // تحديث الملف الشخصي
 const updateMyProfile = async (userId, data) => {
   const { query } = require('../../config/db');
