@@ -290,3 +290,54 @@ const getMyProfile = async (userId) => {
 };
 
 module.exports.getMyProfile = getMyProfile;
+
+// تحديث الملف الشخصي
+const updateMyProfile = async (userId, data) => {
+  const { query } = require('../../config/db');
+  const fields = [];
+  const params = [];
+
+  const map = {
+    fullName: 'full_name',
+    nationalId: 'national_id',
+    address: 'address',
+    licenseNumber: 'license_number',
+    licenseExpiry: 'license_expiry',
+    photoUrl: 'photo_url',
+  };
+
+  for (const [k, col] of Object.entries(map)) {
+    if (data[k] !== undefined) {
+      params.push(data[k]);
+      fields.push(`${col} = $${params.length}`);
+    }
+  }
+
+  if (fields.length === 0) {
+    const err = new Error('لا توجد بيانات للتحديث');
+    err.status = 400;
+    throw err;
+  }
+
+  params.push(userId);
+  const r = await query(
+    `UPDATE drivers SET ${fields.join(', ')}
+     WHERE user_id = $${params.length}
+     RETURNING id, full_name, national_id, address, license_number, license_expiry`,
+    params
+  );
+  if (r.rows.length === 0) {
+    const err = new Error('السائق غير موجود');
+    err.status = 404;
+    throw err;
+  }
+
+  // حدّث الاسم في users أيضًا
+  if (data.fullName) {
+    await query(`UPDATE users SET full_name = $1 WHERE id = $2`, [data.fullName, userId]);
+  }
+
+  return r.rows[0];
+};
+
+module.exports.updateMyProfile = updateMyProfile;

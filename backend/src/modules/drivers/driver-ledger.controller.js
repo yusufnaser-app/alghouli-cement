@@ -79,3 +79,10 @@ const myProfile = asyncHandler(async (req, res) => {
 });
 
 module.exports.myProfile = myProfile;
+
+const updateMyProfile = asyncHandler(async (req, res) => {
+  const r = await service.updateMyProfile(req.user.id, req.body);
+  return response.success(res, r, 'تم تحديث البيانات');
+});
+
+module.exports.updateMyProfile = updateMyProfile;

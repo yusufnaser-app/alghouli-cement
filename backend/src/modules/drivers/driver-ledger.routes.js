@@ -8,6 +8,7 @@ router.use(authenticate);
 
 // السائق — قبل /:driverId
 router.get('/me/profile', requireRoles('driver'), controller.myProfile);
+router.put('/me/profile', requireRoles('driver'), controller.updateMyProfile);
 router.get('/me/summary', requireRoles('driver'), controller.mySummary);
 router.get('/me/ledger', requireRoles('driver'), controller.myLedger);
 router.get('/me/vehicles', requireRoles('driver'), driversController.myVehicles);
