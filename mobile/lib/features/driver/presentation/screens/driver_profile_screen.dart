@@ -39,6 +39,17 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
     }
   }
 
+  Future<void> _openEdit() async {
+    if (_profile == null) return;
+    final ok = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EditDriverProfileScreen(currentData: _profile!),
+      ),
+    );
+    if (ok == true) _load();
+  }
+
   Future<void> _logout() async {
     final ok = await showDialog<bool>(
       context: context,
