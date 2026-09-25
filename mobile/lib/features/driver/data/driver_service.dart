@@ -89,6 +89,18 @@ class DriverService {
   }
 
   // قوائم مساعدة
+  // الرحلة الحالية
+  Future<Map<String, dynamic>?> currentTrip() async {
+    try {
+      final res = await _client.get('/faxes/me/current');
+      final data = res.data['data'];
+      if (data == null) return null;
+      return data as Map<String, dynamic>;
+    } on DioException {
+      return null;
+    }
+  }
+
   Future<Map<String, dynamic>> myProfile() async {
     try {
       final res = await _client.get('/drivers/me/profile');

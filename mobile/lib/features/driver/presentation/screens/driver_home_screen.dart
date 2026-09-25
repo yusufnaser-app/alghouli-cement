@@ -101,6 +101,7 @@ class _DashboardTab extends StatefulWidget {
 class _DashboardTabState extends State<_DashboardTab> {
   final _service = DriverService();
   Map<String, dynamic>? _profile;
+  Map<String, dynamic>? _currentTrip;
   bool _loading = true;
 
   @override
@@ -112,7 +113,11 @@ class _DashboardTabState extends State<_DashboardTab> {
   Future<void> _load() async {
     try {
       final p = await _service.myProfile();
-      setState(() => _profile = p);
+      final t = await _service.currentTrip();
+      setState(() {
+        _profile = p;
+        _currentTrip = t;
+      });
     } catch (_) {}
     setState(() => _loading = false);
   }
@@ -322,8 +327,95 @@ class _DashboardTabState extends State<_DashboardTab> {
                 ],
               ),
             ),
+
+            // === الرحلة الحالية ===
+            if (_currentTrip != null) ...[
+              const SizedBox(height: 12),
+              _buildCurrentTripCard(_currentTrip!),
+            ],
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildCurrentTripCard(Map<String, dynamic> t) {
+    final status = t['status'] ?? '';
+    final statusAr = {
+      'REQUESTED': 'بانتظار الاعتماد',
+      'APPROVED': 'معتمد',
+      'ISSUED': 'تم إصدار الفاكس — توجه للمصنع',
+      'USED': 'تم التحميل',
+    }[status] ?? status;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.secondary, width: 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: AppColors.secondary.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.local_shipping,
+                    color: AppColors.secondary, size: 18),
+              ),
+              const SizedBox(width: 8),
+              const Text('رحلتك الحالية',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.secondary,
+                  )),
+            ],
+          ),
+          const Divider(height: 16),
+          Row(
+            children: [
+              const Icon(Icons.factory,
+                  size: 14, color: AppColors.textSecondary),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(t['factory_name'] ?? '—',
+                    style: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              const Icon(Icons.inventory_2,
+                  size: 14, color: AppColors.textSecondary),
+              const SizedBox(width: 4),
+              Text('${t['requested_quantity']} كيس',
+                  style: const TextStyle(fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.lightBlue,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(statusAr,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primary,
+                )),
+          ),
+        ],
       ),
     );
   }
