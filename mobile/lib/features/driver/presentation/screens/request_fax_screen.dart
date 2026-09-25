@@ -17,7 +17,8 @@ class _RequestFaxScreenState extends State<RequestFaxScreen> {
   final _notesController = TextEditingController();
 
   List<Map<String, dynamic>> _factories = [];
-  List<Map<String, dynamic>> _vehicles = [];
+  List<Map<String, dynamic>> _myVehicles = [];
+  Map<String, dynamic>? _profile;
   String? _factoryId;
   String? _vehicleId;
   bool _loading = true;
@@ -46,10 +47,15 @@ class _RequestFaxScreenState extends State<RequestFaxScreen> {
       final results = await Future.wait([
         _service.factories(),
         _service.vehicles(),
+        _service.myProfile(),
       ]);
       setState(() {
         _factories = results[0];
-        _vehicles = results[1];
+        _myVehicles = results[1];
+        _profile = results[2];
+        if (_myVehicles.isNotEmpty) {
+          _vehicleId = _myVehicles.first['id'];
+        }
       });
     } catch (e) {
       setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
@@ -64,7 +70,7 @@ class _RequestFaxScreenState extends State<RequestFaxScreen> {
       return;
     }
     if (_vehicleId == null) {
-      setState(() => _error = 'يرجى اختيار القاطرة');
+      setState(() => _error = 'لا توجد قاطرة مرتبطة بحسابك');
       return;
     }
     final qty = double.tryParse(_qtyController.text.trim());
@@ -114,7 +120,6 @@ class _RequestFaxScreenState extends State<RequestFaxScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // شريط معلومات
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
@@ -128,7 +133,7 @@ class _RequestFaxScreenState extends State<RequestFaxScreen> {
                         SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            'اختر المصنع والكمية والقاطرة. سيصلك إشعار بعد اعتماد الفاكس.',
+                            'اختر المصنع وأدخل الكمية. سيصلك إشعار بعد اعتماد الفاكس.',
                             style: TextStyle(fontSize: 12),
                           ),
                         ),
@@ -157,6 +162,10 @@ class _RequestFaxScreenState extends State<RequestFaxScreen> {
                     ),
                     const SizedBox(height: 16),
                   ],
+
+                  // بيانات السائق (ثابتة)
+                  _infoSection(),
+                  const SizedBox(height: 20),
 
                   // المصنع
                   const Text('المصنع *',
@@ -192,26 +201,6 @@ class _RequestFaxScreenState extends State<RequestFaxScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // القاطرة
-                  const Text('القاطرة *',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    value: _vehicleId,
-                    decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.local_shipping),
-                      hintText: 'اختر قاطرة',
-                    ),
-                    items: _vehicles.map((v) {
-                      return DropdownMenuItem<String>(
-                        value: v['id'] as String,
-                        child: Text('${v['plate_number']} — ${v['vehicle_type']}'),
-                      );
-                    }).toList(),
-                    onChanged: (v) => setState(() => _vehicleId = v),
-                  ),
-                  const SizedBox(height: 16),
-
                   // ملاحظات
                   const Text('ملاحظات (اختياري)',
                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
@@ -235,6 +224,66 @@ class _RequestFaxScreenState extends State<RequestFaxScreen> {
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _infoSection() {
+    final name = _profile?['full_name'] ?? '—';
+    final phone = _profile?['phone'] ?? '—';
+    final plate = _myVehicles.isNotEmpty
+        ? _myVehicles.first['plate_number'] ?? '—'
+        : 'لا توجد قاطرة';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('بياناتك',
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primary)),
+          const Divider(height: 20),
+          _infoRow(Icons.person, 'الاسم', name),
+          const SizedBox(height: 10),
+          _infoRow(Icons.phone, 'الهاتف', phone),
+          const SizedBox(height: 10),
+          _infoRow(
+            Icons.local_shipping,
+            'القاطرة',
+            plate,
+            color: _myVehicles.isNotEmpty ? AppColors.success : AppColors.danger,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoRow(IconData icon, String label, String value, {Color? color}) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: AppColors.textSecondary),
+        const SizedBox(width: 10),
+        SizedBox(
+          width: 80,
+          child: Text(label,
+              style: const TextStyle(
+                  fontSize: 13, color: AppColors.textSecondary)),
+        ),
+        Expanded(
+          child: Text(value,
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: color)),
+        ),
+      ],
     );
   }
 }
