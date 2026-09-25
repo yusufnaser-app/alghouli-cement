@@ -19,6 +19,7 @@ const menuItems = [
     { path: '/categories', label: 'الأنواع', icon: '🎨', roles: ['admin'] },
     { path: '/traders', label: 'الموزعون', icon: '👥', roles: ['sales', 'accountant', 'admin'] },
     { path: '/drivers', label: 'السائقون', icon: '🧑‍✈️', roles: ['transport', 'admin'] },
+    { path: '/pending-drivers', label: 'طلبات السائقين', icon: '👤', roles: ['admin'], badge: 'drivers' },
     { path: '/vehicles', label: 'الشاحنات', icon: '🚛', roles: ['transport', 'admin'] },
   ]},
   { section: 'التحليلات', items: [
@@ -52,6 +53,7 @@ export default function Layout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [faxCount, setFaxCount] = useState(0);
+  const [driverCount, setDriverCount] = useState(0);
 
   useEffect(() => {
     const loadCounts = async () => {
@@ -63,6 +65,10 @@ export default function Layout({ children }) {
         if (hasRole('transport', 'admin', 'sales')) {
           const r = await client.get('/faxes/pending');
           setFaxCount((r.data.data || []).length);
+        }
+        if (hasRole('admin')) {
+          const r = await client.get('/drivers/admin/pending');
+          setDriverCount((r.data.data || []).length);
         }
       } catch (_) {}
     };
@@ -98,6 +104,7 @@ export default function Layout({ children }) {
   const getBadge = (badgeType) => {
     if (badgeType === 'pending' && pendingCount > 0) return pendingCount;
     if (badgeType === 'faxes' && faxCount > 0) return faxCount;
+    if (badgeType === 'drivers' && driverCount > 0) return driverCount;
     return 0;
   };
 
