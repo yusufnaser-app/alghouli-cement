@@ -2,7 +2,12 @@ const { z } = require('zod');
 
 const registerSchema = z.object({
   userType: z.enum(['customer', 'driver']).default('customer'),
-  fullName: z.string().min(3, 'الاسم قصير جدًا').max(150),
+  fullName: z.string()
+    .min(8, 'الاسم الرباعي مطلوب')
+    .max(200)
+    .refine((v) => v.trim().split(/\s+/).length >= 4, {
+      message: 'يجب إدخال الاسم الرباعي كاملًا',
+    }),
   phone: z.string().regex(/^967[0-9]{9}$/, 'رقم الهاتف بصيغة 967XXXXXXXXX'),
 
   // عميل
