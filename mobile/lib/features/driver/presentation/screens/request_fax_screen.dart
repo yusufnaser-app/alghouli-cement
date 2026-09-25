@@ -44,15 +44,13 @@ class _RequestFaxScreenState extends State<RequestFaxScreen> {
       _error = null;
     });
     try {
-      final results = await Future.wait([
-        _service.factories(),
-        _service.vehicles(),
-        _service.myProfile(),
-      ]);
+      final factories = await _service.factories();
+      final vehicles = await _service.vehicles();
+      final profile = await _service.myProfile();
       setState(() {
-        _factories = results[0];
-        _myVehicles = results[1];
-        _profile = results[2];
+        _factories = factories;
+        _myVehicles = vehicles;
+        _profile = profile;
         if (_myVehicles.isNotEmpty) {
           _vehicleId = _myVehicles.first['id'];
         }
