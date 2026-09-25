@@ -1,30 +1,12 @@
-const { z } = require('zod');
 const asyncHandler = require('../../utils/asyncHandler');
 const response = require('../../utils/response');
 const authService = require('./auth.service');
-
-const registerSchema = z.object({
-  fullName: z.string().min(3).max(150),
-  phone: z.string().regex(/^967[0-9]{9}$/, 'رقم الهاتف بصيغة 967XXXXXXXXX'),
-  customerType: z.enum(['individual', 'trader', 'distributor', 'contractor']),
-  governorate: z.string().min(2).max(100),
-  area: z.string().max(100).optional(),
-  address: z.string().optional(),
-});
-
-const verifyOtpSchema = z.object({
-  phone: z.string().regex(/^967[0-9]{9}$/),
-  otp: z.string().length(6),
-});
-
-const loginSchema = z.object({
-  phone: z.string().regex(/^967[0-9]{9}$/),
-  password: z.string().min(6),
-});
-
-const refreshSchema = z.object({
-  refreshToken: z.string().min(10),
-});
+const {
+  registerSchema,
+  verifyOtpSchema,
+  loginSchema,
+  refreshSchema,
+} = require('./auth.validator');
 
 const register = asyncHandler(async (req, res) => {
   const data = registerSchema.parse(req.body);
