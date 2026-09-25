@@ -8,6 +8,7 @@ router.use(authenticate);
 // السائق
 router.post('/request', requireRoles('driver'), controller.request);
 router.get('/me', requireRoles('driver'), controller.myFaxes);
+router.get('/me/current', requireRoles('driver'), controller.currentTrip);
 router.patch('/:id/enter-factory', requireRoles('driver'), controller.enterFactory);
 
 // التاجر

@@ -111,8 +111,13 @@ const getById = asyncHandler(async (req, res) => {
 });
 
 // ============ Exports ============
+const currentTrip = asyncHandler(async (req, res) => {
+  const t = await service.getCurrentTrip(req.user.id);
+  return response.success(res, t, 'الرحلة الحالية');
+});
+
 module.exports = {
-  request, staffRequest, myFaxes, enterFactory,
+  request, staffRequest, myFaxes, enterFactory, currentTrip,
   pending, pendingRoutePrice, approve, issue, issueAndNotify,
   setRoute, setTransport, recordLoading, cancel, getById,
 };

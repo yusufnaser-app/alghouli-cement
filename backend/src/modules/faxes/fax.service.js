@@ -509,3 +509,23 @@ module.exports.listTraderFaxes = listTraderFaxes;
 module.exports.getFaxById = getFaxById;
 module.exports.cancelFax = cancelFax;
 module.exports.listPendingRouteAndPrice = listPendingRouteAndPrice;
+
+
+
+const getCurrentTrip = async (driverUserId) => {
+  const r = await query(
+    `SELECT f.*, s.name_ar AS factory_name, v.plate_number,
+            d.full_name AS driver_name
+     FROM loading_faxes f
+     LEFT JOIN product_sources s ON s.id = f.factory_id
+     LEFT JOIN vehicles v ON v.id = f.vehicle_id
+     LEFT JOIN drivers d ON d.id = f.driver_id
+     WHERE f.driver_id = (SELECT id FROM drivers WHERE user_id = $1)
+       AND f.status IN ('REQUESTED','APPROVED','ISSUED','USED')
+     ORDER BY f.requested_at DESC LIMIT 1`,
+    [driverUserId]
+  );
+  return r.rows[0] || null;
+};
+
+module.exports.getCurrentTrip = getCurrentTrip;
