@@ -138,6 +138,15 @@ class DriverService {
     } catch (_) {}
   }
 
+  Future<int> unreadNotificationsCount() async {
+    try {
+      final res = await _client.get('/notifications/unread-count');
+      return res.data['data']['count'] as int? ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   // الرحلة الحالية
   Future<Map<String, dynamic>?> currentTrip() async {
     try {

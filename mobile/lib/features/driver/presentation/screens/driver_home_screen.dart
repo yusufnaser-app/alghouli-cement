@@ -102,6 +102,7 @@ class _DashboardTabState extends State<_DashboardTab> {
   final _service = DriverService();
   Map<String, dynamic>? _profile;
   Map<String, dynamic>? _currentTrip;
+  int _unreadCount = 0;
   bool _loading = true;
 
   @override
@@ -114,9 +115,11 @@ class _DashboardTabState extends State<_DashboardTab> {
     try {
       final p = await _service.myProfile();
       final t = await _service.currentTrip();
+      final u = await _service.unreadNotificationsCount();
       setState(() {
         _profile = p;
         _currentTrip = t;
+        _unreadCount = u;
       });
     } catch (_) {}
     setState(() => _loading = false);
@@ -193,7 +196,7 @@ class _DashboardTabState extends State<_DashboardTab> {
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
         child: Column(
           children: [
-            // الشعار
+            // الشعار + زر الإشعارات
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -218,6 +221,47 @@ class _DashboardTabState extends State<_DashboardTab> {
                         )),
                     Text('معاً نصل إلى وجهتك',
                         style: TextStyle(color: Colors.white70, fontSize: 10)),
+                  ],
+                ),
+                const Spacer(),
+                Stack(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.notifications,
+                          color: Colors.white, size: 26),
+                      onPressed: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) =>
+                                  const NotificationsScreen()),
+                        );
+                        _load();
+                      },
+                    ),
+                    if (_unreadCount > 0)
+                      Positioned(
+                        right: 6,
+                        top: 6,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                            color: AppColors.danger,
+                            shape: BoxShape.circle,
+                          ),
+                          constraints: const BoxConstraints(
+                              minWidth: 18, minHeight: 18),
+                          child: Text(
+                            '$_unreadCount',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ],
