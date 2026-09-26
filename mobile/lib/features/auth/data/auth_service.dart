@@ -1,3 +1,4 @@
+import '../../../core/services/notification_service.dart';
 import 'package:dio/dio.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/storage/local_storage.dart';
@@ -76,6 +77,7 @@ class AuthService {
       );
       await LocalStorage.saveToken(result.token);
       await LocalStorage.saveRefreshToken(result.refreshToken);
+      await NotificationService().sendTokenAfterLogin();
       return result;
     } on DioException catch (e) {
       throw Exception(handleApiError(e));
@@ -99,6 +101,7 @@ class AuthService {
       );
       await LocalStorage.saveToken(result.token);
       await LocalStorage.saveRefreshToken(result.refreshToken);
+      await NotificationService().sendTokenAfterLogin();
       return result;
     } on DioException catch (e) {
       throw Exception(handleApiError(e));

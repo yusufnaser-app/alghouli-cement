@@ -60,6 +60,18 @@ class NotificationService {
     }
   }
 
+  // يُستدعى بعد تسجيل الدخول
+  Future<void> sendTokenAfterLogin() async {
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token != null) {
+        await _sendTokenToServer(token);
+      }
+    } catch (e) {
+      debugPrint('sendTokenAfterLogin error: $e');
+    }
+  }
+
   Future<void> _sendTokenToServer(String token) async {
     try {
       final authToken = await LocalStorage.getToken();
