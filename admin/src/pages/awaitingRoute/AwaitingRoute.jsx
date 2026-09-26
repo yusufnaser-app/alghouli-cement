@@ -120,6 +120,7 @@ export default function AwaitingRoute() {
             <thead>
               <tr>
                 <th>السائق</th>
+                <th>التاجر</th>
                 <th>القاطرة</th>
                 <th>المصنع</th>
                 <th>المطلوب</th>
@@ -137,6 +138,20 @@ export default function AwaitingRoute() {
                     <td>
                       <div><strong>{f.driver_name}</strong></div>
                       <div style={{ fontSize: 11, color: '#999' }}>{f.driver_phone}</div>
+                    </td>
+                    <td>
+                      {f.trader_name ? (
+                        <div>
+                          <span className="badge badge-info" style={{ fontSize: 10 }}>
+                            🏢 {f.trader_name}
+                          </span>
+                          <div style={{ fontSize: 10, color: '#999', marginTop: 2 }}>
+                            {f.trader_phone}
+                          </div>
+                        </div>
+                      ) : (
+                        <span style={{ color: '#999', fontSize: 11 }}>—</span>
+                      )}
                     </td>
                     <td>{f.plate_number || '—'}</td>
                     <td>{f.factory_name || '—'}</td>

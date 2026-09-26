@@ -158,6 +158,11 @@ export default function Operations() {
                   <td>
                     <div><strong>{f.driver_name || '—'}</strong></div>
                     <div style={{ fontSize: 11, color: '#999' }}>{f.driver_phone || ''}</div>
+                    {f.trader_name && (
+                      <div style={{ fontSize: 10, color: '#1565C0', marginTop: 2 }}>
+                        🏢 {f.trader_name}
+                      </div>
+                    )}
                   </td>
                   <td>{f.plate_number || '—'}</td>
                   <td>{f.factory_name || '—'}</td>
