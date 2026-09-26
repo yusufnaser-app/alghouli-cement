@@ -10,3 +10,4 @@ build/
 .DS_Store
 mobile/.dart_tool/
 mobile/build/
+backend/firebase-secrets/
