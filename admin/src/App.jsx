@@ -17,6 +17,7 @@ import Traders from './pages/traders/Traders';
 import TraderDetails from './pages/traderDetails/TraderDetails';
 import Drivers from './pages/drivers/Drivers';
 import PendingDrivers from './pages/pendingDrivers/PendingDrivers';
+import DriverFinances from './pages/driverFinances/DriverFinances';
 import Vehicles from './pages/vehicles/Vehicles';
 import Reports from './pages/reports/Reports';
 import Settings from './pages/settings/Settings';
@@ -65,6 +66,7 @@ export default function App() {
           <Route path="/traders/:id" element={<ProtectedRoute><TraderDetails /></ProtectedRoute>} />
           <Route path="/drivers" element={<ProtectedRoute><Drivers /></ProtectedRoute>} />
           <Route path="/pending-drivers" element={<ProtectedRoute><PendingDrivers /></ProtectedRoute>} />
+          <Route path="/driver-finances" element={<ProtectedRoute><DriverFinances /></ProtectedRoute>} />
           <Route path="/vehicles" element={<ProtectedRoute><Vehicles /></ProtectedRoute>} />
           <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
