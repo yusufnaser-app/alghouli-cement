@@ -1,3 +1,5 @@
+const fmt = (n) => (parseFloat(n) || 0).toLocaleString('en-US');
+
 const { sendPushNotification } = require('../../services/fcm.service');
 const { pool, query } = require('../../config/db');
 
@@ -817,18 +819,66 @@ const setRouteAndTransport = async (faxId, data, userId) => {
       );
     }
 
-    // إشعار للسائق
-    await client.query(
-      `INSERT INTO notifications (user_id, title_ar, body_ar, type, reference_type, reference_id)
-       SELECT d.user_id,
-              'تم تحديد خط السير',
-              'خط السير: ' || $1 || ' — مستحق النقل: ' || $2 || ' ريال. يمكنك بدء الرحلة.',
-              'ROUTE_SET',
-              'loading_faxes',
-              $3
-       FROM drivers d WHERE d.id = $4`,
-      [data.route, total, faxId, fax.driver_id]
-    );
+    // إشعار للسائق — يختلف حسب من يتحمل الأجرة
+    if (payerType === 'trader' && payerTraderId) {
+      // الحالة 1: الأجرة على التاجر
+      const traderInfo = await client.query(
+        `SELECT u.full_name, u.phone
+         FROM customers c
+         JOIN users u ON u.id = c.user_id
+         WHERE c.id = $1`,
+        [payerTraderId]
+      );
+      if (traderInfo.rows.length > 0) {
+        const traderName = traderInfo.rows[0].full_name;
+        const traderPhone = traderInfo.rows[0].phone;
+
+        // إشعار in-app
+        await client.query(
+          `INSERT INTO notifications (user_id, title_ar, body_ar, type, reference_type, reference_id)
+           SELECT d.user_id,
+                  'أجور النقل على التاجر',
+                  'أجور النقل (${fmt(total)} ريال) على التاجر: ${traderName} — رقمه: ${traderPhone}. يرجى التواصل معه لاستلام مستحقاتك.',
+                  'TRANSPORT_ON_TRADER',
+                  'loading_faxes',
+                  $1
+           FROM drivers d WHERE d.id = $2`,
+          [faxId, fax.driver_id]
+        );
+
+        // SMS queue
+        await client.query(
+          `INSERT INTO sms_messages (phone, message_type, message, status)
+           VALUES ($1, 'TRANSPORT_ON_TRADER', $2, 'pending')`,
+          [
+            fax.driver_phone,
+            `مؤسسة الغولي: أجور النقل (${total} ريال) على التاجر ${traderName} — رقمه: ${traderPhone}. يرجى التواصل معه.`,
+          ]
+        );
+      }
+    } else {
+      // الحالة 2: الأجرة على المؤسسة
+      await client.query(
+        `INSERT INTO notifications (user_id, title_ar, body_ar, type, reference_type, reference_id)
+         SELECT d.user_id,
+                'تم تحديد خط السير',
+                'خط السير: ${data.route} — مستحق النقل: ${total} ريال من المؤسسة. يمكنك بدء الرحلة.',
+                'ROUTE_SET',
+                'loading_faxes',
+                $1
+         FROM drivers d WHERE d.id = $2`,
+        [faxId, fax.driver_id]
+      );
+
+      await client.query(
+        `INSERT INTO sms_messages (phone, message_type, message, status)
+         VALUES ($1, 'ROUTE_SET', $2, 'pending')`,
+        [
+          fax.driver_phone,
+          `مؤسسة الغولي: تم تحديد خط سير رحلتك: ${data.route}. مستحق النقل: ${total} ريال من المؤسسة.`,
+        ]
+      );
+    }
 
     // FCM Push
     const fcmRes = await client.query(
@@ -846,15 +896,7 @@ const setRouteAndTransport = async (faxId, data, userId) => {
       ).catch((e) => console.error('FCM error:', e.message));
     }
 
-    // SMS queue
-    await client.query(
-      `INSERT INTO sms_messages (phone, message_type, message, status)
-       VALUES ($1, 'ROUTE_SET', $2, 'pending')`,
-      [
-        fax.driver_phone,
-        'تم تحديد خط سير رحلتك: ' + data.route + '. مستحق النقل: ' + total + ' ريال.',
-      ]
-    );
+
 
     await client.query('COMMIT');
 
