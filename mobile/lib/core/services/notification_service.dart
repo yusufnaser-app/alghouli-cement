@@ -7,8 +7,11 @@ import '../storage/local_storage.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
-  debugPrint('Background message: ${message.messageId}');
+  try {
+    await Firebase.initializeApp();
+  } catch (e) {
+    debugPrint('BG Firebase error: $e');
+  }
 }
 
 class NotificationService {
@@ -17,10 +20,13 @@ class NotificationService {
   NotificationService._();
 
   final _client = ApiClient();
+  String? _initError;
 
   Future<void> init() async {
     try {
+      debugPrint('🔵 Starting Firebase init...');
       await Firebase.initializeApp();
+      debugPrint('✅ Firebase initialized');
 
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
@@ -29,54 +35,50 @@ class NotificationService {
         badge: true,
         sound: true,
       );
+      debugPrint('📱 Permission: ${settings.authorizationStatus}');
 
-      if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-        debugPrint('✅ الإذن ممنوح');
-      }
-
-      // الحصول على التوكن
       final token = await FirebaseMessaging.instance.getToken();
+      debugPrint('🎫 Token: $token');
+
       if (token != null) {
-        debugPrint('FCM Token: $token');
         await _sendTokenToServer(token);
       }
 
-      // تحديث التوكن عند تغييره
       FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
+        debugPrint('🔄 Token refreshed');
         _sendTokenToServer(newToken);
       });
 
-      // رسائل في المقدمة
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-        debugPrint('Foreground message: ${message.notification?.title}');
+        debugPrint('📬 Foreground: ${message.notification?.title}');
       });
 
-      // عند فتح التطبيق من إشعار
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-        debugPrint('Notification clicked: ${message.data}');
+        debugPrint('👆 Clicked: ${message.data}');
       });
+
+      _initError = null;
     } catch (e) {
-      debugPrint('❌ خطأ في تهيئة الإشعارات: $e');
+      _initError = e.toString();
+      debugPrint('❌ Firebase init ERROR: $e');
     }
   }
 
-  // للعرض على الشاشة
   Future<Map<String, String>> getTokenDebug() async {
     try {
+      if (_initError != null) {
+        return {'status': 'init_error', 'token': _initError!};
+      }
       final token = await FirebaseMessaging.instance.getToken();
       return {
         'status': token == null ? 'null' : 'ok',
         'token': token ?? 'NULL',
       };
     } catch (e) {
-      return {
-        'status': 'error',
-        'token': e.toString(),
-      };
+      return {'status': 'error', 'token': e.toString()};
     }
   }
 
-  // يُستدعى بعد تسجيل الدخول
   Future<void> sendTokenAfterLogin() async {
     try {
       final token = await FirebaseMessaging.instance.getToken();
@@ -91,14 +93,17 @@ class NotificationService {
   Future<void> _sendTokenToServer(String token) async {
     try {
       final authToken = await LocalStorage.getToken();
-      if (authToken == null || authToken.isEmpty) return;
+      if (authToken == null || authToken.isEmpty) {
+        debugPrint('⚠️ No auth token yet');
+        return;
+      }
 
       await _client.post('/notifications/register-token', data: {
         'fcmToken': token,
       });
-      debugPrint('✅ تم إرسال التوكن للسيرفر');
+      debugPrint('✅ Token sent to server');
     } catch (e) {
-      debugPrint('⚠️ لم يُرسل التوكن: $e');
+      debugPrint('⚠️ Failed to send token: $e');
     }
   }
 }

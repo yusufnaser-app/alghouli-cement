@@ -1,9 +1,8 @@
 import os
-import sys
 
 os.chdir('mobile')
 
-# 1. Patch settings.gradle
+# ========== 1. settings.gradle ==========
 with open('android/settings.gradle', 'r') as f:
     s = f.read()
 
@@ -15,27 +14,47 @@ if 'com.google.gms.google-services' not in s:
     )
     with open('android/settings.gradle', 'w') as f:
         f.write(s)
-    print("Patched settings.gradle")
+    print("✅ Patched settings.gradle")
 else:
-    print("settings.gradle already has google-services")
+    print("ℹ️ settings.gradle already has google-services")
 
-print("--- settings.gradle ---")
-with open('android/settings.gradle') as f:
-    print(f.read())
-
-# 2. Patch app/build.gradle
+# ========== 2. app/build.gradle ==========
 with open('android/app/build.gradle', 'r') as f:
     s = f.read()
 
-if 'com.google.gms.google-services' not in s:
-    s += "\napply plugin: 'com.google.gms.google-services'\n"
+# احذف أي apply plugin قديم
+s = s.replace("\napply plugin: 'com.google.gms.google-services'\n", "")
+s = s.replace("apply plugin: 'com.google.gms.google-services'\n", "")
+s = s.replace("\napply plugin: 'com.google.gms.google-services'", "")
+
+# أضف في plugins block
+if 'id "com.google.gms.google-services"' not in s:
+    # محاولة 1: بعد com.android.application
+    if 'id "com.android.application"' in s:
+        s = s.replace(
+            'id "com.android.application"',
+            'id "com.android.application"\n    id "com.google.gms.google-services"',
+            1
+        )
+        print("✅ Added google-services after com.android.application")
+    # محاولة 2: بعد flutter-gradle-plugin
+    elif 'id "dev.flutter.flutter-gradle-plugin"' in s:
+        s = s.replace(
+            'id "dev.flutter.flutter-gradle-plugin"',
+            'id "dev.flutter.flutter-gradle-plugin"\n    id "com.google.gms.google-services"',
+            1
+        )
+        print("✅ Added google-services after flutter-gradle-plugin")
+    else:
+        print("⚠️ Could not find plugins block")
+
     with open('android/app/build.gradle', 'w') as f:
         f.write(s)
-    print("Patched app/build.gradle")
 else:
-    print("app/build.gradle already has google-services")
+    print("ℹ️ app/build.gradle already has google-services")
 
-print("--- app/build.gradle tail ---")
+# اطبع الملف للتحقق
+print("--- app/build.gradle (first 20 lines) ---")
 with open('android/app/build.gradle') as f:
     lines = f.readlines()
-    print(''.join(lines[-5:]))
+    print(''.join(lines[:20]))
