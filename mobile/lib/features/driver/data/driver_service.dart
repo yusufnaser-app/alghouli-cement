@@ -106,6 +106,38 @@ class DriverService {
     }
   }
 
+  // إشعاراتي
+  Future<List<Map<String, dynamic>>> myNotifications() async {
+    try {
+      final res = await _client.get('/notifications');
+      final list = (res.data['data'] as List?) ?? [];
+      return list.cast<Map<String, dynamic>>();
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+
+  Future<int> unreadCount() async {
+    try {
+      final res = await _client.get('/notifications/unread-count');
+      return res.data['data']['count'] as int? ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  Future<void> markNotificationRead(String id) async {
+    try {
+      await _client.patch('/notifications/$id/read');
+    } catch (_) {}
+  }
+
+  Future<void> markAllNotificationsRead() async {
+    try {
+      await _client.patch('/notifications/read-all');
+    } catch (_) {}
+  }
+
   // الرحلة الحالية
   Future<Map<String, dynamic>?> currentTrip() async {
     try {

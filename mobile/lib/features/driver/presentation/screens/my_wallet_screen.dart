@@ -14,6 +14,7 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
   Map<String, dynamic>? _summary;
   List<Map<String, dynamic>> _ledger = [];
   bool _loading = true;
+  String _filter = 'all';
 
   @override
   void initState() {
@@ -24,20 +25,34 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final results = await Future.wait([
-        _service.mySummary(),
-        _service.myLedger(),
-      ]);
+      final s = await _service.mySummary();
+      final l = await _service.myLedger();
       setState(() {
-        _summary = results[0] as Map<String, dynamic>;
-        _ledger = results[1] as List<Map<String, dynamic>>;
+        _summary = s;
+        _ledger = l;
       });
     } catch (_) {}
     setState(() => _loading = false);
   }
 
+  List<Map<String, dynamic>> get _filtered {
+    if (_filter == 'all') return _ledger;
+    if (_filter == 'dues') {
+      return _ledger.where((t) => t['transaction_type'] == 'transport_due').toList();
+    }
+    if (_filter == 'paid') {
+      return _ledger.where((t) => t['transaction_type'] == 'payment').toList();
+    }
+    if (_filter == 'advances') {
+      return _ledger.where((t) =>
+          t['transaction_type'] == 'advance' ||
+          t['transaction_type'] == 'deduction').toList();
+    }
+    return _ledger;
+  }
+
   String _fmt(dynamic n) {
-    final v = double.tryParse(n.toString()) ?? 0;
+    final v = double.tryParse(n?.toString() ?? '0') ?? 0;
     return v.toStringAsFixed(0).replaceAllMapped(
           RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
           (m) => '${m[1]},',
@@ -47,6 +62,7 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('مستحقاتي'),
         actions: [
@@ -60,7 +76,7 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  // الرصيد الرئيسي
+                  // ===== الرصيد الرئيسي =====
                   Container(
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
@@ -70,6 +86,13 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
                         end: Alignment.bottomLeft,
                       ),
                       borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primary.withOpacity(0.3),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -79,8 +102,9 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
                             Icon(Icons.account_balance_wallet,
                                 color: Colors.white, size: 26),
                             SizedBox(width: 8),
-                            Text('رصيدك الحالي',
-                                style: TextStyle(color: Colors.white70, fontSize: 14)),
+                            Text('رصيدك المتبقي',
+                                style: TextStyle(
+                                    color: Colors.white70, fontSize: 14)),
                           ],
                         ),
                         const SizedBox(height: 12),
@@ -88,19 +112,24 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
                           '${_fmt(_summary?['current_balance'] ?? 0)} ر.ي',
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 32,
+                            fontSize: 34,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                         const SizedBox(height: 4),
-                        const Text('مستحقات نقل',
-                            style: TextStyle(color: Colors.white70, fontSize: 12)),
+                        Text(
+                          (_summary?['current_balance'] ?? 0) > 0
+                              ? 'مستحق لك من المؤسسة'
+                              : 'لا توجد مستحقات',
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 12),
+                        ),
                       ],
                     ),
                   ),
                   const SizedBox(height: 16),
 
-                  // إحصائيات
+                  // ===== الإحصائيات =====
                   Row(
                     children: [
                       Expanded(
@@ -146,11 +175,44 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // سجل العمليات
-                  const Text('سجل العمليات',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  // ===== الفلاتر =====
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _filterChip('الكل', 'all'),
+                          const SizedBox(width: 8),
+                          _filterChip('مستحقات نقل', 'dues'),
+                          const SizedBox(width: 8),
+                          _filterChip('دفعات', 'paid'),
+                          const SizedBox(width: 8),
+                          _filterChip('سلف وخصومات', 'advances'),
+                        ],
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 12),
-                  if (_ledger.isEmpty)
+
+                  // ===== كشف الحساب =====
+                  Row(
+                    children: [
+                      const Icon(Icons.receipt_long,
+                          color: AppColors.primary, size: 20),
+                      const SizedBox(width: 8),
+                      const Text('كشف الحساب',
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold)),
+                      const Spacer(),
+                      Text('${_filtered.length} عملية',
+                          style: const TextStyle(
+                              fontSize: 12, color: AppColors.textSecondary)),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  if (_filtered.isEmpty)
                     Container(
                       padding: const EdgeInsets.all(32),
                       decoration: BoxDecoration(
@@ -168,7 +230,7 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
                       ),
                     )
                   else
-                    ..._ledger.map((t) => _ledgerRow(t)),
+                    ..._filtered.map((t) => _ledgerRow(t)),
                 ],
               ),
             ),
@@ -186,14 +248,42 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(height: 6),
+          Icon(icon, color: color, size: 22),
+          const SizedBox(height: 8),
           Text(label,
-              style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+              style: const TextStyle(
+                  fontSize: 11, color: AppColors.textSecondary)),
           const SizedBox(height: 2),
           Text(value,
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+              style: const TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.bold)),
         ],
+      ),
+    );
+  }
+
+  Widget _filterChip(String label, String value) {
+    final selected = _filter == value;
+    return InkWell(
+      onTap: () => setState(() => _filter = value),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? AppColors.primary : AppColors.divider,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: selected ? Colors.white : AppColors.textSecondary,
+          ),
+        ),
       ),
     );
   }
@@ -212,7 +302,7 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
       icon = Icons.local_shipping;
       color = AppColors.success;
     } else if (type == 'payment') {
-      label = 'دفعة';
+      label = 'دفعة مستلمة';
       icon = Icons.payments;
       color = AppColors.info;
     } else if (type == 'advance') {
@@ -227,59 +317,79 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.divider),
       ),
-      child: Row(
+      child: Column(
         children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: color, size: 18),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label,
-                    style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.bold)),
-                if (t['description'] != null)
-                  Text(t['description'].toString(),
-                      style: const TextStyle(
-                          fontSize: 11, color: AppColors.textSecondary),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
-                Text(t['created_at']?.toString().substring(0, 10) ?? '',
-                    style: const TextStyle(
-                        fontSize: 10, color: AppColors.textSecondary)),
-              ],
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+          Row(
             children: [
-              Text(
-                debit > 0 ? '+${_fmt(debit)}' : '-${_fmt(credit)}',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: debit > 0 ? AppColors.success : AppColors.danger,
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label,
+                        style: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.bold)),
+                    if (t['description'] != null)
+                      Text(t['description'].toString(),
+                          style: const TextStyle(
+                              fontSize: 11, color: AppColors.textSecondary),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                    if (t['reference_code'] != null)
+                      Text('مرجع: ${t['reference_code']}',
+                          style: const TextStyle(
+                              fontSize: 10, color: AppColors.textSecondary)),
+                  ],
                 ),
               ),
-              Text('رصيد: ${_fmt(t['balance_after'])}',
-                  style: const TextStyle(
-                      fontSize: 10, color: AppColors.textSecondary)),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    debit > 0 ? '+${_fmt(debit)}' : '-${_fmt(credit)}',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: debit > 0 ? AppColors.success : AppColors.danger,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(t['created_at']?.toString().substring(0, 10) ?? '',
+                      style: const TextStyle(
+                          fontSize: 10, color: AppColors.textSecondary)),
+                ],
+              ),
             ],
           ),
+          if (t['balance_after'] != null) ...[
+            const Divider(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('الرصيد بعد العملية',
+                    style: TextStyle(
+                        fontSize: 11, color: AppColors.textSecondary)),
+                Text('${_fmt(t['balance_after'])} ر.ي',
+                    style: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ],
         ],
       ),
     );

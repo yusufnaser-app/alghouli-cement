@@ -463,6 +463,15 @@ class _DashboardTabState extends State<_DashboardTab> {
         color: AppColors.warning,
         onTap: () => widget.onNavigate(2),
       ),
+      _ActionItem(
+        icon: Icons.notifications,
+        title: 'الإشعارات',
+        color: AppColors.brandRed,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+        ),
+      ),
     ];
 
     return GridView.builder(
