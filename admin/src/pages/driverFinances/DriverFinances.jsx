@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import client, { handleError } from '../../api/client';
 
 export default function DriverFinances() {
+  const navigate = useNavigate();
   const [drivers, setDrivers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -136,7 +138,14 @@ export default function DriverFinances() {
               return (
                 <tr key={d.id}>
                   <td>
-                    <div><strong>{d.full_name}</strong></div>
+                    <div 
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => navigate('/drivers/' + d.id + '/file')}
+                    >
+                      <strong style={{ color: '#1A3A5C', textDecoration: 'underline' }}>
+                        {d.full_name}
+                      </strong>
+                    </div>
                     <div style={{ fontSize: 11, color: '#999' }}>{d.phone}</div>
                   </td>
                   <td>{d.plate_number || '—'}</td>
@@ -150,7 +159,7 @@ export default function DriverFinances() {
                   </td>
                   <td>
                     <div style={{ display: 'flex', gap: 4 }}>
-                      <button className="btn btn-primary btn-sm" onClick={() => openStatement(d)}>
+                      <button className="btn btn-primary btn-sm" onClick={() => navigate('/drivers/' + d.id + '/file')}>
                         كشف
                       </button>
                       <button className="btn btn-success btn-sm" onClick={() => { setSelected(d); setAction('pay'); }}>
