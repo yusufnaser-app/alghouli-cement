@@ -60,6 +60,22 @@ class NotificationService {
     }
   }
 
+  // للعرض على الشاشة
+  Future<Map<String, String>> getTokenDebug() async {
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      return {
+        'status': token == null ? 'null' : 'ok',
+        'token': token ?? 'NULL',
+      };
+    } catch (e) {
+      return {
+        'status': 'error',
+        'token': e.toString(),
+      };
+    }
+  }
+
   // يُستدعى بعد تسجيل الدخول
   Future<void> sendTokenAfterLogin() async {
     try {

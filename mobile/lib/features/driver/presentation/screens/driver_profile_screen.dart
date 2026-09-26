@@ -3,6 +3,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/storage/local_storage.dart';
 import '../../../auth/presentation/screens/login_screen.dart';
 import '../../data/driver_service.dart';
+import '../../../../core/services/notification_service.dart';
 import 'edit_driver_profile_screen.dart';
 
 class DriverProfileScreen extends StatefulWidget {
@@ -259,6 +260,11 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                                   .toList(),
                             ),
                           const SizedBox(height: 12),
+
+                          // === تشخيص الإشعارات ===
+                          const TokenDebugWidget(),
+
+                          const SizedBox(height: 12),
                           Card(
                             color: AppColors.danger.withOpacity(0.05),
                             child: ListTile(
@@ -319,6 +325,83 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                 style: const TextStyle(
                     fontSize: 13, fontWeight: FontWeight.w600)),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+
+class TokenDebugWidget extends StatefulWidget {
+  const TokenDebugWidget({super.key});
+
+  @override
+  State<TokenDebugWidget> createState() => _TokenDebugWidgetState();
+}
+
+class _TokenDebugWidgetState extends State<TokenDebugWidget> {
+  Map<String, String>? _data;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final d = await NotificationService().getTokenDebug();
+    setState(() {
+      _data = d;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.yellow.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.bug_report, color: Colors.orange, size: 20),
+              const SizedBox(width: 8),
+              const Text('تشخيص الإشعارات',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 13)),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.refresh, size: 18),
+                onPressed: () {
+                  setState(() => _loading = true);
+                  _load();
+                },
+              ),
+            ],
+          ),
+          const Divider(height: 12),
+          if (_loading)
+            const Text('جاري التحميل...', style: TextStyle(fontSize: 12))
+          else if (_data == null)
+            const Text('لا توجد بيانات', style: TextStyle(fontSize: 12))
+          else ...[
+            Text('الحالة: ${_data!['status']}',
+                style: const TextStyle(fontSize: 12)),
+            const SizedBox(height: 6),
+            const Text('التوكن:', style: TextStyle(fontSize: 12)),
+            const SizedBox(height: 4),
+            SelectableText(
+              _data!['token'] ?? '',
+              style: const TextStyle(fontSize: 10, fontFamily: 'monospace'),
+            ),
+          ],
         ],
       ),
     );
