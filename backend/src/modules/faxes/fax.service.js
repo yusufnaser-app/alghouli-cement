@@ -279,7 +279,7 @@ const issueAndNotify = async (faxId, faxNumber, staffUserId) => {
        FROM loading_faxes f
        JOIN drivers d ON d.id = f.driver_id
        LEFT JOIN product_sources s ON s.id = f.factory_id
-       WHERE f.id = $1 FOR UPDATE`,
+       WHERE f.id = $1`,
       [faxId]
     );
     if (f.rows.length === 0) {
@@ -543,7 +543,7 @@ const driverConfirmLoading = async (faxId, driverUserId, loadedQty, notes) => {
        FROM loading_faxes f
        JOIN drivers d ON d.id = f.driver_id
        LEFT JOIN product_sources s ON s.id = f.factory_id
-       WHERE f.id = $1 FOR UPDATE`,
+       WHERE f.id = $1`,
       [faxId]
     );
 
@@ -642,7 +642,7 @@ const setRouteAndTransport = async (faxId, data, userId) => {
               d.phone AS driver_phone
        FROM loading_faxes f
        JOIN drivers d ON d.id = f.driver_id
-       WHERE f.id = $1 FOR UPDATE`,
+       WHERE f.id = $1`,
       [faxId]
     );
 
