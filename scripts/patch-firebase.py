@@ -1,8 +1,25 @@
 import os
+import json
 
 os.chdir('mobile')
 
-# ========== 1. settings.gradle ==========
+# ========== 1. التحقق من google-services.json ==========
+json_path = 'android/app/google-services.json'
+if not os.path.exists(json_path):
+    print(f"❌ {json_path} NOT FOUND")
+    exit(1)
+
+# تحقق من JSON صالح
+try:
+    with open(json_path, 'r', encoding='utf-8-sig') as f:
+        data = json.load(f)
+    pkg = data['client'][0]['client_info']['android_client_info']['package_name']
+    print(f"✅ google-services.json valid — package: {pkg}")
+except Exception as e:
+    print(f"❌ Invalid google-services.json: {e}")
+    exit(1)
+
+# ========== 2. settings.gradle ==========
 with open('android/settings.gradle', 'r') as f:
     s = f.read()
 
@@ -15,46 +32,39 @@ if 'com.google.gms.google-services' not in s:
     with open('android/settings.gradle', 'w') as f:
         f.write(s)
     print("✅ Patched settings.gradle")
-else:
-    print("ℹ️ settings.gradle already has google-services")
 
-# ========== 2. app/build.gradle ==========
+# ========== 3. app/build.gradle ==========
 with open('android/app/build.gradle', 'r') as f:
     s = f.read()
 
-# احذف أي apply plugin قديم
-s = s.replace("\napply plugin: 'com.google.gms.google-services'\n", "")
-s = s.replace("apply plugin: 'com.google.gms.google-services'\n", "")
-s = s.replace("\napply plugin: 'com.google.gms.google-services'", "")
+# احذف أي إضافات سابقة
+s = s.replace('\napply plugin: \'com.google.gms.google-services\'\n', '')
+s = s.replace('apply plugin: \'com.google.gms.google-services\'\n', '')
+s = s.replace('\n    id "com.google.gms.google-services"', '')
+s = s.replace('    id "com.google.gms.google-services"\n', '')
 
-# أضف في plugins block
-if 'id "com.google.gms.google-services"' not in s:
-    # محاولة 1: بعد com.android.application
-    if 'id "com.android.application"' in s:
-        s = s.replace(
-            'id "com.android.application"',
-            'id "com.android.application"\n    id "com.google.gms.google-services"',
-            1
-        )
-        print("✅ Added google-services after com.android.application")
-    # محاولة 2: بعد flutter-gradle-plugin
-    elif 'id "dev.flutter.flutter-gradle-plugin"' in s:
-        s = s.replace(
-            'id "dev.flutter.flutter-gradle-plugin"',
-            'id "dev.flutter.flutter-gradle-plugin"\n    id "com.google.gms.google-services"',
-            1
-        )
-        print("✅ Added google-services after flutter-gradle-plugin")
-    else:
-        print("⚠️ Could not find plugins block")
-
-    with open('android/app/build.gradle', 'w') as f:
-        f.write(s)
+# ابحث عن plugins { ... } block
+import re
+plugins_match = re.search(r'plugins\s*\{([^}]+)\}', s)
+if plugins_match:
+    plugins_content = plugins_match.group(1).strip()
+    # أضف plugin قبل last closing brace
+    new_plugins = 'plugins {\n' + plugins_content + '\n    id "com.google.gms.google-services"\n}'
+    s = s[:plugins_match.start()] + new_plugins + s[plugins_match.end():]
+    print("✅ Added google-services at END of plugins block")
 else:
-    print("ℹ️ app/build.gradle already has google-services")
+    print("⚠️ No plugins block found")
+
+with open('android/app/build.gradle', 'w') as f:
+    f.write(s)
 
 # اطبع الملف للتحقق
-print("--- app/build.gradle (first 20 lines) ---")
+print("--- app/build.gradle (first 15 lines) ---")
 with open('android/app/build.gradle') as f:
     lines = f.readlines()
-    print(''.join(lines[:20]))
+    print(''.join(lines[:15]))
+
+# تحقق من وجود google-services.json
+print("--- Verify ---")
+print(f"file exists: {os.path.exists(json_path)}")
+print(f"file size: {os.path.getsize(json_path)} bytes")

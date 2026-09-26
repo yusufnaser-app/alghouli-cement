@@ -43,7 +43,9 @@ jobs:
         run: |
           cd mobile
           cp firebase/google-services.json android/app/google-services.json
-          echo "google-services.json copied"
+          echo "--- Verify ---"
+          ls -la android/app/google-services.json
+          cat android/app/google-services.json | head -10
 
       - name: Patch gradle for Firebase
         run: python3 scripts/patch-firebase.py
@@ -56,6 +58,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: alghouli-apk-v10
+          name: alghouli-apk-v11
           path: mobile/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
