@@ -43,32 +43,48 @@ jobs:
           cd mobile
           cp firebase/google-services.json android/app/google-services.json
           echo "google-services.json copied"
-          ls -la android/app/google-services.json
 
-      - name: Patch build.gradle for Firebase
+      - name: Patch gradle for Firebase
         run: |
           cd mobile
-          echo "=== BEFORE android/build.gradle ==="
-          cat android/build.gradle
+          python3 << 'PYEOF'
+# 1. Patch settings.gradle
+with open('android/settings.gradle', 'r') as f:
+    s = f.read()
 
-          LINE=$(grep -n "dependencies {" android/build.gradle | head -1 | cut -d: -f1)
-          if [ -n "$LINE" ]; then
-            sed -i "${LINE}a\\        classpath 'com.google.gms:google-services:4.4.2'" android/build.gradle
-          fi
+if 'com.google.gms.google-services' not in s:
+    s = s.replace(
+        'id "com.android.application"',
+        'id "com.google.gms.google-services" version "4.4.2" apply false\n    id "com.android.application"',
+        1
+    )
+    with open('android/settings.gradle', 'w') as f:
+        f.write(s)
+    print("Patched settings.gradle")
+else:
+    print("settings.gradle already has google-services")
 
-          echo "=== AFTER android/build.gradle ==="
-          cat android/build.gradle
+print("--- settings.gradle ---")
+with open('android/settings.gradle') as f:
+    print(f.read())
 
-          echo "=== android/app/build.gradle tail (before) ==="
-          tail -3 android/app/build.gradle
+# 2. Patch app/build.gradle
+with open('android/app/build.gradle', 'r') as f:
+    s = f.read()
 
-          if ! grep -q "com.google.gms.google-services" android/app/build.gradle; then
-            echo "" >> android/app/build.gradle
-            echo "apply plugin: 'com.google.gms.google-services'" >> android/app/build.gradle
-          fi
+if 'com.google.gms.google-services' not in s:
+    s += "\napply plugin: 'com.google.gms.google-services'\n"
+    with open('android/app/build.gradle', 'w') as f:
+        f.write(s)
+    print("Patched app/build.gradle")
+else:
+    print("app/build.gradle already has google-services")
 
-          echo "=== android/app/build.gradle tail (after) ==="
-          tail -3 android/app/build.gradle
+print("--- app/build.gradle tail ---")
+with open('android/app/build.gradle') as f:
+    lines = f.readlines()
+    print(''.join(lines[-5:]))
+PYEOF
 
       - name: Build APK
         run: |
@@ -78,6 +94,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: alghouli-apk-v9
+          name: alghouli-apk-v10
           path: mobile/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
