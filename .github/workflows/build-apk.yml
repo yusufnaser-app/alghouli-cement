@@ -38,43 +38,33 @@ jobs:
           cd mobile
           flutter create --platforms=android --org com.alghouli --project-name alghouli_app .
 
-      - name: Configure Firebase for Android
+      - name: Copy google-services.json
         run: |
           cd mobile
           if [ -f firebase/google-services.json ]; then
             cp firebase/google-services.json android/app/google-services.json
-            echo "✅ google-services.json copied"
+            echo "google-services.json copied"
+            ls -la android/app/google-services.json
           else
-            echo "❌ google-services.json NOT FOUND"
+            echo "google-services.json NOT FOUND"
             exit 1
           fi
 
-          BUILD_GRADLE="android/build.gradle"
-          if [ -f "$BUILD_GRADLE" ]; then
-            if ! grep -q "com.google.gms:google-services" "$BUILD_GRADLE"; then
-              python3 << 'PYEOF'
-with open('android/build.gradle', 'r') as f:
-    s = f.read()
-s = s.replace(
-    "dependencies {",
-    "dependencies {\n        classpath 'com.google.gms:google-services:4.4.2'",
-    1
-)
-with open('android/build.gradle', 'w') as f:
-    f.write(s)
-print('✅ build.gradle updated')
-PYEOF
-            fi
-            cat "$BUILD_GRADLE"
+      - name: Patch build.gradle for Firebase
+        run: |
+          cd mobile
+          if [ -f android/build.gradle ]; then
+            sed -i "s|^dependencies {|dependencies {\n        classpath 'com.google.gms:google-services:4.4.2'|" android/build.gradle
+            echo "=== android/build.gradle ==="
+            cat android/build.gradle
           fi
-
-          APP_GRADLE="android/app/build.gradle"
-          if [ -f "$APP_GRADLE" ]; then
-            if ! grep -q "com.google.gms.google-services" "$APP_GRADLE"; then
-              echo "" >> "$APP_GRADLE"
-              echo "apply plugin: 'com.google.gms.google-services'" >> "$APP_GRADLE"
+          if [ -f android/app/build.gradle ]; then
+            if ! grep -q "com.google.gms.google-services" android/app/build.gradle; then
+              echo "" >> android/app/build.gradle
+              echo "apply plugin: 'com.google.gms.google-services'" >> android/app/build.gradle
             fi
-            tail -5 "$APP_GRADLE"
+            echo "=== android/app/build.gradle tail ==="
+            tail -5 android/app/build.gradle
           fi
 
       - name: Build APK
@@ -85,6 +75,6 @@ PYEOF
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: alghouli-apk-v7
+          name: alghouli-apk-v8
           path: mobile/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
