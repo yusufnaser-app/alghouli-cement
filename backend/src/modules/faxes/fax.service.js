@@ -701,6 +701,10 @@ const setRouteAndTransport = async (faxId, data, userId) => {
     const rate = parseFloat(data.rate);
     const total = rate * baseQty;
 
+    // تحديد من يتحمل أجور النقل — قبل أي استخدام
+    const payerType = data.transportPayer || 'institution';
+    const payerTraderId = data.transportPayerTraderId || null;
+
     // تحديث الفاكس
     await client.query(
       `UPDATE loading_faxes
@@ -740,12 +744,8 @@ const setRouteAndTransport = async (faxId, data, userId) => {
       ]
     );
 
-    // تحديد من يتحمل أجور النقل
-    const payerType = data.transportPayer || 'institution';
-    const payerTraderId = data.transportPayerTraderId || null;
-
     // سجل في driver_ledger (فقط إذا المؤسسة تدفع)
-    if (payerType === 'institution' && fax.driver_type !== 'trader_driver') {
+    if (data.transportPayer !== 'trader' && fax.driver_type !== 'trader_driver') {
       const d = await client.query(
         `SELECT current_balance FROM drivers WHERE id = $1`,
         [fax.driver_id]
