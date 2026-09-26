@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import client, { handleError } from '../../api/client';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function Drivers() {
+  const navigate = useNavigate();
   const { hasRole } = useAuth();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -93,7 +95,7 @@ export default function Drivers() {
             </thead>
             <tbody>
               {items.map((d) => (
-                <tr key={d.id}>
+                <tr key={d.id} onClick={() => navigate(`/drivers/${d.id}/file`)} style={{cursor: "pointer"}}>
                   <td><strong>{d.full_name}</strong></td>
                   <td>{d.phone}</td>
                   <td>{d.license_number || '—'}</td>

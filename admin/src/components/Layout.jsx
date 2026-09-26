@@ -46,6 +46,7 @@ const pageTitles = {
   '/categories': { title: 'الأنواع', subtitle: 'أنواع الأسمنت والألوان' },
   '/traders': { title: 'الموزعون', subtitle: 'التجار وأرصدتهم' },
   '/drivers': { title: 'السائقون', subtitle: 'إدارة السائقين' },
+  '/drivers/:id/file': { title: 'ملف السائق', subtitle: 'كل التفاصيل' },
   '/pending-drivers': { title: 'طلبات السائقين', subtitle: 'مراجعة واعتماد' },
   '/vehicles': { title: 'الشاحنات', subtitle: 'إدارة الشاحنات' },
   '/reports': { title: 'التقارير', subtitle: 'تحليلات المبيعات' },
