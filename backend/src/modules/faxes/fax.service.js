@@ -1,3 +1,4 @@
+const { sendPushNotification } = require('../../services/fcm.service');
 const { pool, query } = require('../../config/db');
 
 // ============== إنشاء الفاكس ==============
@@ -310,6 +311,22 @@ const issueAndNotify = async (faxId, faxNumber, staffUserId) => {
       ]
     );
 
+    // FCM Push
+    const fcmRes = await client.query(
+      `SELECT u.fcm_token FROM users u
+       JOIN drivers d ON d.user_id = u.id
+       WHERE d.id = $1`,
+      [fax.driver_id]
+    );
+    if (fcmRes.rows[0]?.fcm_token) {
+      sendPushNotification(
+        fcmRes.rows[0].fcm_token,
+        'تم إصدار فاكس التحميل',
+        `فاكس رقم ${faxNumber} من ${fax.factory_name || 'المصنع'}. توجه للمصنع الآن.`,
+        { type: 'FAX_ISSUED', faxId: faxId }
+      ).catch((e) => console.error('FCM error:', e.message));
+    }
+
     await client.query('COMMIT');
     return { id: faxId, status: 'ISSUED', fax_number: faxNumber, sms_queued: true };
   } catch (err) {
@@ -590,6 +607,25 @@ const driverConfirmLoading = async (faxId, driverUserId, loadedQty, notes) => {
       [faxId, JSON.stringify({ loaded: loadedQty, requested, diff })]
     );
 
+    // FCM Push للسائق بتأكيد التسجيل
+    const fcmRes = await client.query(
+      `SELECT u.fcm_token FROM users u
+       JOIN drivers d ON d.user_id = u.id
+       WHERE d.id = $1`,
+      [fax.driver_id]
+    );
+    if (fcmRes.rows[0]?.fcm_token) {
+      const msg = Math.abs(diff) > 0.01
+        ? `تم تسجيل تحميل ${loadedQty} كيس (فرق ${diff}). المؤسسة ستراجع الكمية.`
+        : `تم تسجيل تحميل ${loadedQty} كيس. انتظر خط السير.`;
+      sendPushNotification(
+        fcmRes.rows[0].fcm_token,
+        'تم تسجيل التحميل',
+        msg,
+        { type: 'LOADING_CONFIRMED', faxId: faxId }
+      ).catch((e) => console.error('FCM error:', e.message));
+    }
+
     if (Math.abs(diff) > 0.01) {
       await client.query(
         `INSERT INTO audit_logs (action, entity_type, entity_id, new_values)
@@ -740,6 +776,22 @@ const setRouteAndTransport = async (faxId, data, userId) => {
        FROM drivers d WHERE d.id = $4`,
       [data.route, total, faxId, fax.driver_id]
     );
+
+    // FCM Push
+    const fcmRes = await client.query(
+      `SELECT u.fcm_token FROM users u
+       JOIN drivers d ON d.user_id = u.id
+       WHERE d.id = $1`,
+      [fax.driver_id]
+    );
+    if (fcmRes.rows[0]?.fcm_token) {
+      sendPushNotification(
+        fcmRes.rows[0].fcm_token,
+        'تم تحديد خط السير',
+        `خط السير: ${data.route} — مستحق النقل: ${total} ريال.`,
+        { type: 'ROUTE_SET', faxId: faxId }
+      ).catch((e) => console.error('FCM error:', e.message));
+    }
 
     // SMS queue
     await client.query(
