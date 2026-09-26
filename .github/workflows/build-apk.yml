@@ -38,16 +38,43 @@ jobs:
           cd mobile
           flutter create --platforms=android --org com.alghouli --project-name alghouli_app .
 
-      - name: Copy google-services.json
+      - name: Configure Firebase for Android
         run: |
           cd mobile
           if [ -f firebase/google-services.json ]; then
             cp firebase/google-services.json android/app/google-services.json
-            echo "✅ تم نسخ google-services.json"
-            ls -la android/app/google-services.json
+            echo "✅ google-services.json copied"
           else
-            echo "⚠️ google-services.json غير موجود"
+            echo "❌ google-services.json NOT FOUND"
             exit 1
+          fi
+
+          BUILD_GRADLE="android/build.gradle"
+          if [ -f "$BUILD_GRADLE" ]; then
+            if ! grep -q "com.google.gms:google-services" "$BUILD_GRADLE"; then
+              python3 << 'PYEOF'
+with open('android/build.gradle', 'r') as f:
+    s = f.read()
+s = s.replace(
+    "dependencies {",
+    "dependencies {\n        classpath 'com.google.gms:google-services:4.4.2'",
+    1
+)
+with open('android/build.gradle', 'w') as f:
+    f.write(s)
+print('✅ build.gradle updated')
+PYEOF
+            fi
+            cat "$BUILD_GRADLE"
+          fi
+
+          APP_GRADLE="android/app/build.gradle"
+          if [ -f "$APP_GRADLE" ]; then
+            if ! grep -q "com.google.gms.google-services" "$APP_GRADLE"; then
+              echo "" >> "$APP_GRADLE"
+              echo "apply plugin: 'com.google.gms.google-services'" >> "$APP_GRADLE"
+            fi
+            tail -5 "$APP_GRADLE"
           fi
 
       - name: Build APK
@@ -58,6 +85,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: alghouli-apk-v6
+          name: alghouli-apk-v7
           path: mobile/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
