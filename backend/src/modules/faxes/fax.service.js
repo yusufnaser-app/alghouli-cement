@@ -479,11 +479,16 @@ const recordLoading = async (faxId, loadedQty, userId) => {
 const listPendingFaxes = async () => {
   const r = await query(
     `SELECT f.*, d.full_name AS driver_name, d.phone AS driver_phone,
-            v.plate_number, s.name_ar AS factory_name
+            d.driver_type,
+            v.plate_number, s.name_ar AS factory_name,
+            tu.full_name AS trader_name,
+            tu.phone AS trader_phone
      FROM loading_faxes f
      LEFT JOIN drivers d ON d.id = f.driver_id
      LEFT JOIN vehicles v ON v.id = f.vehicle_id
      LEFT JOIN product_sources s ON s.id = f.factory_id
+     LEFT JOIN customers tc ON tc.id = f.trader_id
+     LEFT JOIN users tu ON tu.id = tc.user_id
      WHERE f.status IN ('REQUESTED','APPROVED','ISSUED')
      ORDER BY f.requested_at DESC`
   );
@@ -492,10 +497,13 @@ const listPendingFaxes = async () => {
 
 const listDriverFaxes = async (driverUserId) => {
   const r = await query(
-    `SELECT f.*, s.name_ar AS factory_name, v.plate_number
+    `SELECT f.*, s.name_ar AS factory_name, v.plate_number,
+            tu.full_name AS trader_name, tu.phone AS trader_phone
      FROM loading_faxes f
      LEFT JOIN product_sources s ON s.id = f.factory_id
      LEFT JOIN vehicles v ON v.id = f.vehicle_id
+     LEFT JOIN customers tc ON tc.id = f.trader_id
+     LEFT JOIN users tu ON tu.id = tc.user_id
      WHERE f.driver_id = (SELECT id FROM drivers WHERE user_id = $1)
      ORDER BY f.requested_at DESC LIMIT 50`,
     [driverUserId]
@@ -701,11 +709,16 @@ module.exports.driverConfirmLoading = driverConfirmLoading;
 const listAwaitingRoute = async () => {
   const r = await query(
     `SELECT f.*, d.full_name AS driver_name, d.phone AS driver_phone,
-            v.plate_number, s.name_ar AS factory_name
+            d.driver_type,
+            v.plate_number, s.name_ar AS factory_name,
+            tu.full_name AS trader_name,
+            tu.phone AS trader_phone
      FROM loading_faxes f
      LEFT JOIN drivers d ON d.id = f.driver_id
      LEFT JOIN vehicles v ON v.id = f.vehicle_id
      LEFT JOIN product_sources s ON s.id = f.factory_id
+     LEFT JOIN customers tc ON tc.id = f.trader_id
+     LEFT JOIN users tu ON tu.id = tc.user_id
      WHERE f.status = 'USED'
        AND f.route IS NULL
      ORDER BY f.used_at ASC`

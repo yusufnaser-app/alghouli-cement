@@ -154,6 +154,21 @@ const createBulkFaxes = async (items, staffUserId) => {
           [faxNumber, f.rows[0].name_ar, item.quantity, fax.rows[0].id, driver.id]
         );
 
+        // إشعار للتاجر إذا كان السائق تابعاً له
+        if (driver.owner_trader_id) {
+          await client.query(
+            `INSERT INTO notifications (user_id, title_ar, body_ar, type, reference_type, reference_id)
+             SELECT c.user_id,
+                    'فاكس لسائقك',
+                    'تم إصدار فاكس رقم ' || $1 || ' لسائقك من ' || $2 || '. الكمية: ' || $3 || ' كيس.',
+                    'DRIVER_FAX_ISSUED',
+                    'loading_faxes',
+                    $4
+             FROM customers c WHERE c.id = $5`,
+            [faxNumber, f.rows[0].name_ar, item.quantity, fax.rows[0].id, driver.owner_trader_id]
+          );
+        }
+
         await client.query(
           `INSERT INTO sms_messages (phone, message_type, message, status)
            VALUES ($1, 'FAX_ISSUED', $2, 'pending')`,
