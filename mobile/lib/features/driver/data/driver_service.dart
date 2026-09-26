@@ -89,6 +89,23 @@ class DriverService {
   }
 
   // قوائم مساعدة
+  // تأكيد التحميل من السائق
+  Future<Map<String, dynamic>> confirmLoading(
+    String faxId,
+    double loadedQty, {
+    String? notes,
+  }) async {
+    try {
+      final res = await _client.patch('/faxes/$faxId/confirm-loading', data: {
+        'loadedQuantity': loadedQty,
+        if (notes != null && notes.isNotEmpty) 'notes': notes,
+      });
+      return res.data['data'] as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+
   // الرحلة الحالية
   Future<Map<String, dynamic>?> currentTrip() async {
     try {
