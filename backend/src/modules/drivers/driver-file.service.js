@@ -48,16 +48,18 @@ const getTrips = async (driverId, { limit = 100, from, to } = {}) => {
     SELECT lf.id, lf.status, lf.requested_at, lf.used_at,
            lf.requested_quantity, lf.loaded_quantity,
            lf.quantity_discrepancy, lf.fax_number,
-           lf.route, lf.transport_rate, lf.transport_total,
+           lf.route, lf.transport_rate, lf.transport_rate_unit,
+           lf.transport_total, lf.transport_payer,
            ps.name_ar AS factory_name,
            v.plate_number,
            o.order_number,
-           c.full_name AS customer_name
+           u.full_name AS customer_name
     FROM loading_faxes lf
     LEFT JOIN product_sources ps ON ps.id = lf.factory_id
     LEFT JOIN vehicles v ON v.id = lf.vehicle_id
     LEFT JOIN orders o ON o.id = lf.order_id
     LEFT JOIN customers c ON c.id = o.customer_id
+    LEFT JOIN users u ON u.id = c.user_id
     WHERE lf.driver_id = $1
   `;
   const params = [driverId];
