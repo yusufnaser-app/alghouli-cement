@@ -2,6 +2,19 @@ const { sendPushNotification } = require('../../services/fcm.service');
 const { pool, query } = require('../../config/db');
 
 // ============== إنشاء الفاكس ==============
+
+const generateFaxNumber = async (client) => {
+  const year = new Date().getFullYear();
+  const r = await client.query(
+    `SELECT COUNT(*) FROM loading_faxes 
+     WHERE fax_number IS NOT NULL 
+       AND fax_number LIKE $1`,
+    [`FX-${year}-%`]
+  );
+  const count = parseInt(r.rows[0].count, 10) + 1;
+  return `FX-${year}-${String(count).padStart(5, '0')}`;
+};
+
 const requestFax = async (requestedByUserId, data) => {
   const client = await pool.connect();
   try {
@@ -203,18 +216,25 @@ const requestFaxByStaff = async (data, staffUserId) => {
 
     const isManaged = driver.driver_type !== 'trader_driver';
 
+    // توليد رقم الفاكس تلقائياً
+    const faxNumber = await generateFaxNumber(client);
+
+    // إنشاء + إصدار فوري
     const fax = await client.query(
       `INSERT INTO loading_faxes
        (order_id, driver_id, vehicle_id, factory_id, requested_quantity,
         status, requested_at, notes, created_by,
-        requested_by_user_id, trader_id, driver_type_snapshot, is_managed_by_institution)
-       VALUES ($1,$2,$3,$4,$5,'REQUESTED',NOW(),$6,$7,$8,$9,$10,$11)
+        requested_by_user_id, trader_id, driver_type_snapshot, is_managed_by_institution,
+        fax_number, approved_at, issued_at, approved_quantity)
+       VALUES ($1,$2,$3,$4,$5,'ISSUED',NOW(),$6,$7,$8,$9,$10,$11,
+               $12, NOW(), NOW(), $5)
        RETURNING *`,
       [
         data.orderId || null, driver.id, data.vehicleId, data.factoryId,
         data.quantity, data.notes || null, staffUserId,
         staffUserId, driver.owner_trader_id || null,
         driver.driver_type, isManaged,
+        faxNumber,
       ]
     );
 
@@ -222,6 +242,29 @@ const requestFaxByStaff = async (data, staffUserId) => {
       `INSERT INTO automation_events (event_type, entity_type, entity_id, payload)
        VALUES ('fax.created_by_staff', 'loading_faxes', $1, $2)`,
       [fax.rows[0].id, JSON.stringify({ staff_id: staffUserId })]
+    );
+
+    // إشعار in-app للسائق
+    await client.query(
+      `INSERT INTO notifications (user_id, title_ar, body_ar, type, reference_type, reference_id)
+       SELECT d.user_id,
+              'فاكس تحميل جديد',
+              'فاكس رقم ' || $1 || ' من ' || $2 || '. الكمية: ' || $3 || ' كيس. يرجى التوجه للمصنع.',
+              'FAX_ISSUED',
+              'loading_faxes',
+              $4
+       FROM drivers d WHERE d.id = $5`,
+      [faxNumber, f.rows[0].name_ar, data.quantity, fax.rows[0].id, driver.id]
+    );
+
+    // SMS queue
+    await client.query(
+      `INSERT INTO sms_messages (phone, message_type, message, status)
+       VALUES ($1, 'FAX_ISSUED', $2, 'pending')`,
+      [
+        driver.phone,
+        `مؤسسة الغولي: تم إصدار فاكس التحميل رقم ${faxNumber} من ${f.rows[0].name_ar}. الكمية: ${data.quantity} كيس. يرجى التوجه للمصنع.`,
+      ]
     );
 
     await client.query('COMMIT');

@@ -1,5 +1,19 @@
 const { pool, query } = require('../../config/db');
 
+const generateFaxNumber = async (client) => {
+  const year = new Date().getFullYear();
+  const r = await client.query(
+    `SELECT COUNT(*) FROM loading_faxes 
+     WHERE fax_number IS NOT NULL 
+       AND fax_number LIKE $1`,
+    [`FX-${year}-%`]
+  );
+  const count = parseInt(r.rows[0].count, 10) + 1;
+  return `FX-${year}-${String(count).padStart(5, '0')}`;
+};
+
+
+
 const getSuggestions = async (filters = {}) => {
   let sql = `
     SELECT d.id AS driver_id, d.full_name, d.phone, d.driver_type,
@@ -99,18 +113,26 @@ const createBulkFaxes = async (items, staffUserId) => {
         }
 
         const isManaged = driver.driver_type !== 'trader_driver';
+
+        // توليد رقم الفاكس
+        const faxNumber = await generateFaxNumber(client);
+
+        // إنشاء + إصدار فوري
         const fax = await client.query(
           `INSERT INTO loading_faxes
            (driver_id, vehicle_id, factory_id, requested_quantity,
             status, requested_at, notes, created_by,
-            requested_by_user_id, trader_id, driver_type_snapshot, is_managed_by_institution)
-           VALUES ($1,$2,$3,$4,'REQUESTED',NOW(),$5,$6,$7,$8,$9,$10)
-           RETURNING id`,
+            requested_by_user_id, trader_id, driver_type_snapshot, is_managed_by_institution,
+            fax_number, approved_at, issued_at, approved_quantity)
+           VALUES ($1,$2,$3,$4,'ISSUED',NOW(),$5,$6,$7,$8,$9,$10,
+                   $11, NOW(), NOW(), $4)
+           RETURNING id, fax_number`,
           [
             driver.id, item.vehicleId, item.factoryId, item.quantity,
             item.notes || null, staffUserId,
             staffUserId, driver.owner_trader_id || null,
             driver.driver_type, isManaged,
+            faxNumber,
           ]
         );
 
@@ -124,12 +146,21 @@ const createBulkFaxes = async (items, staffUserId) => {
           `INSERT INTO notifications (user_id, title_ar, body_ar, type, reference_type, reference_id)
            SELECT d.user_id,
                   'فاكس تحميل جديد',
-                  'تم إنشاء فاكس تحميل لك من ' || $1 || '. الكمية: ' || $2 || ' كيس.',
-                  'FAX_CREATED',
+                  'فاكس رقم ' || $1 || ' من ' || $2 || '. الكمية: ' || $3 || ' كيس. يرجى التوجه للمصنع.',
+                  'FAX_ISSUED',
                   'loading_faxes',
-                  $3
-           FROM drivers d WHERE d.id = $4`,
-          [f.rows[0].name_ar, item.quantity, fax.rows[0].id, driver.id]
+                  $4
+           FROM drivers d WHERE d.id = $5`,
+          [faxNumber, f.rows[0].name_ar, item.quantity, fax.rows[0].id, driver.id]
+        );
+
+        await client.query(
+          `INSERT INTO sms_messages (phone, message_type, message, status)
+           VALUES ($1, 'FAX_ISSUED', $2, 'pending')`,
+          [
+            driver.phone,
+            `مؤسسة الغولي: تم إصدار فاكس التحميل رقم ${faxNumber} من ${f.rows[0].name_ar}. الكمية: ${item.quantity} كيس.`,
+          ]
         );
 
         results.created.push({
