@@ -38,20 +38,17 @@ jobs:
           cd mobile
           flutter create --platforms=android --org com.alghouli --project-name alghouli_app .
 
-      - name: Add INTERNET permission to AndroidManifest
+      - name: Copy google-services.json
         run: |
-          cd mobile/android/app/src/main
-          echo "=== Before ==="
-          head -5 AndroidManifest.xml
-          
-          # Add INTERNET permission right after <manifest ...> tag
-          sed -i 's|<manifest xmlns:android="http://schemas.android.com/apk/res/android">|<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET" />|' AndroidManifest.xml
-          
-          # Ensure application tag has usesCleartextTraffic
-          sed -i 's|<application|<application\n        android:usesCleartextTraffic="true"|' AndroidManifest.xml
-          
-          echo "=== After ==="
-          head -10 AndroidManifest.xml
+          cd mobile
+          if [ -f firebase/google-services.json ]; then
+            cp firebase/google-services.json android/app/google-services.json
+            echo "✅ تم نسخ google-services.json"
+            ls -la android/app/google-services.json
+          else
+            echo "⚠️ google-services.json غير موجود"
+            exit 1
+          fi
 
       - name: Build APK
         run: |
@@ -61,6 +58,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: alghouli-apk-v5
+          name: alghouli-apk-v6
           path: mobile/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
