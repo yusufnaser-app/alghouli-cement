@@ -3,6 +3,7 @@ import client, { handleError } from '../../api/client';
 
 export default function AwaitingRoute() {
   const [items, setItems] = useState([]);
+  const [traders, setTraders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState({
@@ -13,6 +14,9 @@ export default function AwaitingRoute() {
     rate: '',
     unit: 'bag',
     baseOn: 'loaded_quantity',
+    transportPayer: 'institution',
+    transportPayerTraderId: '',
+    transportPayerNote: '',
   });
   const [saving, setSaving] = useState(false);
 
@@ -21,8 +25,12 @@ export default function AwaitingRoute() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await client.get('/faxes/admin/awaiting-route');
+      const [res, tradersRes] = await Promise.all([
+        client.get('/faxes/admin/awaiting-route'),
+        client.get('/admin/customers'),
+      ]);
       setItems(res.data.data || []);
+      setTraders((tradersRes.data.data || []).filter(c => c.customer_type === 'trader' || c.customer_type === 'distributor'));
     } catch (err) {
       alert(handleError(err));
     } finally {
@@ -57,6 +65,9 @@ export default function AwaitingRoute() {
         rate: parseFloat(form.rate),
         unit: form.unit,
         baseOn: form.baseOn,
+        transportPayer: form.transportPayer,
+        transportPayerTraderId: form.transportPayer === 'trader' ? form.transportPayerTraderId : undefined,
+        transportPayerNote: form.transportPayerNote,
       });
       alert('✅ تم تحديد خط السير والأجرة');
       setSelected(null);
@@ -254,6 +265,89 @@ export default function AwaitingRoute() {
                   <option value="requested_quantity">الكمية المطلوبة</option>
                   <option value="delivered_quantity">الكمية المسلمة</option>
                 </select>
+              </div>
+
+              {/* من يدفع أجور النقل */}
+              <div className="form-group" style={{
+                padding: 14,
+                background: '#FFF9C4',
+                borderRadius: 10,
+                border: '2px solid #FFC107',
+              }}>
+                <label className="form-label" style={{
+                  color: '#F57F17',
+                  fontWeight: 'bold',
+                  fontSize: 14,
+                  marginBottom: 12,
+                }}>
+                  💰 من يتحمل أجور النقل؟
+                </label>
+                <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className={'btn ' + (form.transportPayer === 'institution' ? 'btn-primary' : 'btn-secondary')}
+                    onClick={() => setForm({ ...form, transportPayer: 'institution', transportPayerTraderId: '' })}
+                    style={{ flex: 1, minWidth: 140, padding: '10px 16px' }}
+                  >
+                    🏢 المؤسسة
+                  </button>
+                  <button
+                    type="button"
+                    className={'btn ' + (form.transportPayer === 'trader' ? 'btn-primary' : 'btn-secondary')}
+                    onClick={() => setForm({ ...form, transportPayer: 'trader' })}
+                    style={{ flex: 1, minWidth: 140, padding: '10px 16px' }}
+                  >
+                    👤 التاجر
+                  </button>
+                </div>
+
+                {form.transportPayer === 'institution' && (
+                  <div style={{
+                    background: '#E8F5E9',
+                    padding: 10,
+                    borderRadius: 8,
+                    fontSize: 12,
+                  }}>
+                    ✅ سيتم تسجيل المبلغ في حساب السائق كـ **مستحق له من المؤسسة**.
+                  </div>
+                )}
+
+                {form.transportPayer === 'trader' && (
+                  <div>
+                    <label className="form-label">اختر التاجر *</label>
+                    <select
+                      className="form-select"
+                      value={form.transportPayerTraderId}
+                      onChange={(e) => setForm({ ...form, transportPayerTraderId: e.target.value })}
+                    >
+                      <option value="">— اختر التاجر —</option>
+                      {traders.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.full_name} — {t.phone}
+                        </option>
+                      ))}
+                    </select>
+                    <div style={{
+                      background: '#FFF3E0',
+                      padding: 10,
+                      borderRadius: 8,
+                      marginTop: 8,
+                      fontSize: 12,
+                    }}>
+                      ⚠️ المبلغ سيُسجَّل على التاجر، ولن يظهر في حساب السائق.
+                    </div>
+                  </div>
+                )}
+
+                <div className="form-group" style={{ marginTop: 12, marginBottom: 0 }}>
+                  <label className="form-label">ملاحظات</label>
+                  <input
+                    className="form-input"
+                    value={form.transportPayerNote}
+                    onChange={(e) => setForm({ ...form, transportPayerNote: e.target.value })}
+                    placeholder="سبب التحديد..."
+                  />
+                </div>
               </div>
 
               {/* الملخص المالي */}
