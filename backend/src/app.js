@@ -25,6 +25,7 @@ const filesRoutes = require('./modules/files/files.routes');
 const posRoutes = require('./modules/pos/pos.routes');
 const adminRoutes = require('./modules/admin/admin.routes');
 const faxRoutes = require('./modules/faxes/fax.routes');
+const bulkFaxRoutes = require('./modules/faxes/bulk-fax.routes');
 const traderManagementRoutes = require('./modules/traders/driver-management.routes');
 const errorHandler = require('./middlewares/errorHandler');
 const response = require('./utils/response');
@@ -63,6 +64,7 @@ api.use('/files', filesRoutes);
 api.use('/pos', posRoutes);
 api.use('/admin', adminRoutes);
 api.use('/faxes', faxRoutes);
+api.use('/bulk-faxes', bulkFaxRoutes);
 api.use('/traders/me', traderManagementRoutes);
 
 app.use('/api/v1', api);
