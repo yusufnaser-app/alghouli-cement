@@ -7,6 +7,8 @@ const menuItems = [
   { section: 'الرئيسية', items: [
     { path: '/', label: 'لوحة المعلومات', icon: '📊', roles: [] },
     { path: '/operations', label: 'مركز التشغيل', icon: '⚡', roles: ['transport', 'admin', 'sales'], badge: 'faxes' },
+    { path: '/bulk-fax', label: 'فاكس جماعي', icon: '📄', roles: ['transport', 'admin', 'sales'] },
+    { path: '/awaiting-route', label: 'بانتظار خط السير', icon: '📍', roles: ['transport', 'admin', 'sales'], badge: 'awaiting' },
   ]},
   { section: 'العمليات', items: [
     { path: '/orders', label: 'الطلبات', icon: '📦', roles: ['sales', 'admin'] },
@@ -33,14 +35,17 @@ const menuItems = [
 const pageTitles = {
   '/': { title: 'لوحة المعلومات', subtitle: 'نظرة عامة على النشاط' },
   '/operations': { title: 'مركز التشغيل', subtitle: 'إدارة الفاكسات والرحلات' },
-  '/orders': { title: 'الطلبات', subtitle: 'إدارة ومتابعة الطلبات' },
+  '/bulk-fax': { title: 'فاكس جماعي', subtitle: 'إنشاء فاكسات متعددة' },
+  '/awaiting-route': { title: 'بانتظار خط السير', subtitle: 'تحديد الوجهة والأجرة' },
+  '/orders': { title: 'الطلبات', subtitle: 'إدارة الطلبات' },
   '/pending-credit': { title: 'طلبات بانتظار الموافقة', subtitle: 'الموافقة على الطلبات الآجلة' },
-  '/payments': { title: 'المدفوعات', subtitle: 'مراجعة واعتماد الدفعات' },
+  '/payments': { title: 'المدفوعات', subtitle: 'مراجعة الدفعات' },
   '/products': { title: 'المنتجات', subtitle: 'إدارة الأسمنت والأسعار' },
   '/sources': { title: 'المصانع', subtitle: 'إدارة المصانع' },
   '/categories': { title: 'الأنواع', subtitle: 'أنواع الأسمنت والألوان' },
   '/traders': { title: 'الموزعون', subtitle: 'التجار وأرصدتهم' },
   '/drivers': { title: 'السائقون', subtitle: 'إدارة السائقين' },
+  '/pending-drivers': { title: 'طلبات السائقين', subtitle: 'مراجعة واعتماد' },
   '/vehicles': { title: 'الشاحنات', subtitle: 'إدارة الشاحنات' },
   '/reports': { title: 'التقارير', subtitle: 'تحليلات المبيعات' },
   '/settings': { title: 'الإعدادات', subtitle: 'إعدادات النظام' },
@@ -66,14 +71,12 @@ export default function Layout({ children }) {
         if (hasRole('transport', 'admin', 'sales')) {
           const r = await client.get('/faxes/pending');
           setFaxCount((r.data.data || []).length);
+          const r2 = await client.get('/faxes/admin/awaiting-route');
+          setAwaitingCount((r2.data.data || []).length);
         }
         if (hasRole('admin')) {
           const r = await client.get('/drivers/admin/pending');
           setDriverCount((r.data.data || []).length);
-        }
-        if (hasRole('transport', 'admin', 'sales')) {
-          const r = await client.get('/faxes/admin/awaiting-route');
-          setAwaitingCount((r.data.data || []).length);
         }
       } catch (_) {}
     };
@@ -96,14 +99,7 @@ export default function Layout({ children }) {
     : 'م';
 
   const userRolesAr = (user?.roles || [])
-    .map((r) => ({
-      admin: 'مدير',
-      sales: 'مبيعات',
-      accountant: 'محاسب',
-      transport: 'نقل',
-      inventory: 'مخزون',
-      pos: 'نقطة بيع',
-    }[r] || r))
+    .map((r) => ({ admin: 'مدير', sales: 'مبيعات', accountant: 'محاسب', transport: 'نقل', inventory: 'مخزون' }[r] || r))
     .join(' • ');
 
   const getBadge = (badgeType) => {
@@ -134,7 +130,7 @@ export default function Layout({ children }) {
               <div key={section.section}>
                 <div className="nav-section-title">{section.section}</div>
                 {visible.map((item) => {
-                  const badgeCount = item.badge ? getBadge(item.badge) : 0;
+                  const bc = item.badge ? getBadge(item.badge) : 0;
                   return (
                     <NavLink
                       key={item.path}
@@ -145,12 +141,12 @@ export default function Layout({ children }) {
                     >
                       <span className="nav-icon">{item.icon}</span>
                       <span style={{ flex: 1 }}>{item.label}</span>
-                      {badgeCount > 0 && (
+                      {bc > 0 && (
                         <span style={{
                           background: '#DC3545', color: 'white', borderRadius: 12,
                           padding: '2px 8px', fontSize: 11, fontWeight: 'bold',
                           minWidth: 24, textAlign: 'center',
-                        }}>{badgeCount}</span>
+                        }}>{bc}</span>
                       )}
                     </NavLink>
                   );

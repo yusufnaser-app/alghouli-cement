@@ -4,6 +4,8 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Operations from './pages/operations/Operations';
+import BulkFax from './pages/bulkFax/BulkFax';
+import AwaitingRoute from './pages/awaitingRoute/AwaitingRoute';
 import Sources from './pages/sources/Sources';
 import Categories from './pages/categories/Categories';
 import Products from './pages/products/Products';
@@ -50,6 +52,8 @@ export default function App() {
           <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
           <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/operations" element={<ProtectedRoute><Operations /></ProtectedRoute>} />
+          <Route path="/bulk-fax" element={<ProtectedRoute><BulkFax /></ProtectedRoute>} />
+          <Route path="/awaiting-route" element={<ProtectedRoute><AwaitingRoute /></ProtectedRoute>} />
           <Route path="/products" element={<ProtectedRoute><Products /></ProtectedRoute>} />
           <Route path="/sources" element={<ProtectedRoute><Sources /></ProtectedRoute>} />
           <Route path="/categories" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
@@ -65,7 +69,6 @@ export default function App() {
           <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
           <Route path="/deliveries" element={<ProtectedRoute><Placeholder icon="🚚" title="التوصيل" /></ProtectedRoute>} />
-          <Route path="/transport-rates" element={<ProtectedRoute><Placeholder icon="💵" title="أسعار النقل" /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>
