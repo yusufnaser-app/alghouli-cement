@@ -54,6 +54,7 @@ export default function Layout({ children }) {
   const [pendingCount, setPendingCount] = useState(0);
   const [faxCount, setFaxCount] = useState(0);
   const [driverCount, setDriverCount] = useState(0);
+  const [awaitingCount, setAwaitingCount] = useState(0);
 
   useEffect(() => {
     const loadCounts = async () => {
@@ -69,6 +70,10 @@ export default function Layout({ children }) {
         if (hasRole('admin')) {
           const r = await client.get('/drivers/admin/pending');
           setDriverCount((r.data.data || []).length);
+        }
+        if (hasRole('transport', 'admin', 'sales')) {
+          const r = await client.get('/faxes/admin/awaiting-route');
+          setAwaitingCount((r.data.data || []).length);
         }
       } catch (_) {}
     };
@@ -105,6 +110,7 @@ export default function Layout({ children }) {
     if (badgeType === 'pending' && pendingCount > 0) return pendingCount;
     if (badgeType === 'faxes' && faxCount > 0) return faxCount;
     if (badgeType === 'drivers' && driverCount > 0) return driverCount;
+    if (badgeType === 'awaiting' && awaitingCount > 0) return awaitingCount;
     return 0;
   };
 
