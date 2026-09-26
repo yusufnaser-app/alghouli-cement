@@ -10,6 +10,7 @@ router.post('/request', requireRoles('driver'), controller.request);
 router.get('/me', requireRoles('driver'), controller.myFaxes);
 router.get('/me/current', requireRoles('driver'), controller.currentTrip);
 router.patch('/:id/enter-factory', requireRoles('driver'), controller.enterFactory);
+router.patch('/:id/confirm-loading', requireRoles('driver'), controller.confirmLoading);
 
 // التاجر
 router.post('/request-for-driver', requireRoles('customer'), controller.request);

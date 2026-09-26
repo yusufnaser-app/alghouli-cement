@@ -529,3 +529,90 @@ const getCurrentTrip = async (driverUserId) => {
 };
 
 module.exports.getCurrentTrip = getCurrentTrip;
+
+
+
+const driverConfirmLoading = async (faxId, driverUserId, loadedQty, notes) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const f = await client.query(
+      `SELECT f.*, d.user_id AS driver_user_id, d.full_name AS driver_name,
+              s.name_ar AS factory_name
+       FROM loading_faxes f
+       JOIN drivers d ON d.id = f.driver_id
+       LEFT JOIN product_sources s ON s.id = f.factory_id
+       WHERE f.id = $1 FOR UPDATE`,
+      [faxId]
+    );
+
+    if (f.rows.length === 0) {
+      const err = new Error('الفاكس غير موجود');
+      err.status = 404;
+      throw err;
+    }
+
+    const fax = f.rows[0];
+
+    if (fax.driver_user_id !== driverUserId) {
+      const err = new Error('هذا الفاكس لا يخصك');
+      err.status = 403;
+      throw err;
+    }
+
+    if (!['ISSUED', 'APPROVED'].includes(fax.status)) {
+      const err = new Error('لا يمكن تسجيل التحميل في هذه الحالة');
+      err.status = 400;
+      throw err;
+    }
+
+    const requested = parseFloat(fax.requested_quantity || 0);
+    const diff = loadedQty - requested;
+
+    await client.query(
+      `UPDATE loading_faxes
+       SET status = 'USED',
+           used_at = NOW(),
+           loaded_quantity = $1,
+           quantity_discrepancy = $2,
+           factory_exited_at = NOW(),
+           loading_confirmed_by = $3,
+           loading_confirmed_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $4`,
+      [loadedQty, diff, driverUserId, faxId]
+    );
+
+    await client.query(
+      `INSERT INTO automation_events (event_type, entity_type, entity_id, payload)
+       VALUES ('loading.confirmed_by_driver', 'loading_faxes', $1, $2)`,
+      [faxId, JSON.stringify({ loaded: loadedQty, requested, diff })]
+    );
+
+    if (Math.abs(diff) > 0.01) {
+      await client.query(
+        `INSERT INTO audit_logs (action, entity_type, entity_id, new_values)
+         VALUES ('QUANTITY_DISCREPANCY', 'loading_faxes', $1, $2)`,
+        [faxId, JSON.stringify({ requested, loaded: loadedQty, diff })]
+      );
+    }
+
+    await client.query('COMMIT');
+
+    return {
+      id: faxId,
+      loaded_quantity: loadedQty,
+      requested_quantity: requested,
+      discrepancy: diff,
+      has_discrepancy: Math.abs(diff) > 0.01,
+    };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
+module.exports.driverConfirmLoading = driverConfirmLoading;

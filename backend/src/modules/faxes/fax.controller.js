@@ -116,8 +116,22 @@ const currentTrip = asyncHandler(async (req, res) => {
   return response.success(res, t, 'الرحلة الحالية');
 });
 
+const confirmLoading = asyncHandler(async (req, res) => {
+  const { loadedQuantity, notes } = req.body;
+  if (typeof loadedQuantity !== 'number' || loadedQuantity <= 0) {
+    return response.error(res, 'الكمية غير صحيحة', 400);
+  }
+  const r = await service.driverConfirmLoading(
+    req.params.id,
+    req.user.id,
+    loadedQuantity,
+    notes
+  );
+  return response.success(res, r, 'تم تسجيل التحميل بنجاح');
+});
+
 module.exports = {
-  request, staffRequest, myFaxes, enterFactory, currentTrip,
+  request, staffRequest, myFaxes, enterFactory, currentTrip, confirmLoading,
   pending, pendingRoutePrice, approve, issue, issueAndNotify,
   setRoute, setTransport, recordLoading, cancel, getById,
 };
