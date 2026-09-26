@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "826445161154",
+    "project_id": "al-ghoul-cement-company",
+    "storage_bucket": "al-ghoul-cement-company.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:826445161154:android:941e33f2f6dc9c077a515b",
+        "android_client_info": {
+          "package_name": "com.alghouli.alghouli_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD9n4gPsvDcDzzO5k6qFyNM6yzxtYMi1VU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
