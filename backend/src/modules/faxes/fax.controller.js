@@ -130,8 +130,18 @@ const confirmLoading = asyncHandler(async (req, res) => {
   return response.success(res, r, 'تم تسجيل التحميل بنجاح');
 });
 
+const awaitingRoute = asyncHandler(async (req, res) => {
+  const list = await service.listAwaitingRoute();
+  return response.success(res, list, 'فاكسات بانتظار خط السير');
+});
+
+const setRouteTransport = asyncHandler(async (req, res) => {
+  const r = await service.setRouteAndTransport(req.params.id, req.body, req.user.id);
+  return response.success(res, r, 'تم تحديد خط السير والأجرة');
+});
+
 module.exports = {
-  request, staffRequest, myFaxes, enterFactory, currentTrip, confirmLoading,
+  request, staffRequest, myFaxes, enterFactory, currentTrip, confirmLoading, awaitingRoute, setRouteTransport,
   pending, pendingRoutePrice, approve, issue, issueAndNotify,
   setRoute, setTransport, recordLoading, cancel, getById,
 };

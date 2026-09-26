@@ -18,6 +18,8 @@ router.post('/request-for-driver', requireRoles('customer'), controller.request)
 // الموظف
 router.post('/staff/create', requireRoles('transport', 'admin', 'sales'), controller.staffRequest);
 router.get('/pending', requireRoles('transport', 'admin'), controller.pending);
+router.get('/admin/awaiting-route', requireRoles('admin', 'transport'), controller.awaitingRoute);
+router.patch('/:id/route-transport', requireRoles('admin', 'transport'), controller.setRouteTransport);
 router.get('/pending-route-price', requireRoles('transport', 'admin'), controller.pendingRoutePrice);
 router.patch('/:id/approve', requireRoles('transport', 'admin'), controller.approve);
 router.patch('/:id/issue', requireRoles('transport', 'admin'), controller.issue);

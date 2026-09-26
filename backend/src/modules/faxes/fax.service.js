@@ -616,3 +616,157 @@ const driverConfirmLoading = async (faxId, driverUserId, loadedQty, notes) => {
 };
 
 module.exports.driverConfirmLoading = driverConfirmLoading;
+
+const listAwaitingRoute = async () => {
+  const r = await query(
+    `SELECT f.*, d.full_name AS driver_name, d.phone AS driver_phone,
+            v.plate_number, s.name_ar AS factory_name
+     FROM loading_faxes f
+     LEFT JOIN drivers d ON d.id = f.driver_id
+     LEFT JOIN vehicles v ON v.id = f.vehicle_id
+     LEFT JOIN product_sources s ON s.id = f.factory_id
+     WHERE f.status = 'USED'
+       AND f.route IS NULL
+     ORDER BY f.used_at ASC`
+  );
+  return r.rows;
+};
+
+const setRouteAndTransport = async (faxId, data, userId) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const f = await client.query(
+      `SELECT f.*, d.id AS driver_id, d.driver_type, d.full_name AS driver_name,
+              d.phone AS driver_phone
+       FROM loading_faxes f
+       JOIN drivers d ON d.id = f.driver_id
+       WHERE f.id = $1 FOR UPDATE`,
+      [faxId]
+    );
+
+    if (f.rows.length === 0) {
+      const err = new Error('الفاكس غير موجود');
+      err.status = 404;
+      throw err;
+    }
+
+    const fax = f.rows[0];
+
+    // قاعدة الحساب
+    let baseQty = parseFloat(fax.loaded_quantity || fax.requested_quantity || 0);
+    if (data.baseOn === 'requested_quantity') {
+      baseQty = parseFloat(fax.requested_quantity || 0);
+    } else if (data.baseOn === 'delivered_quantity') {
+      baseQty = parseFloat(fax.delivered_quantity || fax.loaded_quantity || 0);
+    }
+
+    const rate = parseFloat(data.rate);
+    const total = rate * baseQty;
+
+    // تحديث الفاكس
+    await client.query(
+      `UPDATE loading_faxes
+       SET route = $1,
+           delivery_address = $2,
+           delivery_governorate = $3,
+           delivery_area = $4,
+           transport_rate = $5,
+           transport_rate_unit = $6,
+           transport_total = $7,
+           transport_base_on = $8,
+           transport_set_by = $9,
+           transport_set_at = NOW(),
+           route_set_by = $9,
+           route_set_at = NOW(),
+           status = 'READY_FOR_TRANSIT',
+           status_updated_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $10`,
+      [
+        data.route,
+        data.deliveryAddress || null,
+        data.deliveryGovernorate || null,
+        data.deliveryArea || null,
+        rate,
+        data.unit || 'bag',
+        total,
+        data.baseOn || 'loaded_quantity',
+        userId,
+        faxId,
+      ]
+    );
+
+    // سجل في driver_ledger (فقط إذا لم يكن سائق تاجر)
+    if (fax.driver_type !== 'trader_driver') {
+      const d = await client.query(
+        `SELECT current_balance FROM drivers WHERE id = $1`,
+        [fax.driver_id]
+      );
+      const newBalance = parseFloat(d.rows[0].current_balance || 0) + total;
+
+      await client.query(
+        `INSERT INTO driver_ledger
+         (driver_id, order_id, transaction_type, description, debit, credit,
+          balance_after, reference_code, created_by)
+         VALUES ($1, $2, 'transport_due', $3, $4, 0, $5, $6, $7)`,
+        [
+          fax.driver_id,
+          fax.order_id,
+          'مستحق نقل — فاكس ' + (fax.fax_number || 'بدون رقم'),
+          total,
+          newBalance,
+          fax.fax_number,
+          userId,
+        ]
+      );
+
+      await client.query(
+        `UPDATE drivers SET current_balance = $1 WHERE id = $2`,
+        [newBalance, fax.driver_id]
+      );
+    }
+
+    // إشعار للسائق
+    await client.query(
+      `INSERT INTO notifications (user_id, title_ar, body_ar, type, reference_type, reference_id)
+       SELECT d.user_id,
+              'تم تحديد خط السير',
+              'خط السير: ' || $1 || ' — مستحق النقل: ' || $2 || ' ريال. يمكنك بدء الرحلة.',
+              'ROUTE_SET',
+              'loading_faxes',
+              $3
+       FROM drivers d WHERE d.id = $4`,
+      [data.route, total, faxId, fax.driver_id]
+    );
+
+    // SMS queue
+    await client.query(
+      `INSERT INTO sms_messages (phone, message_type, message, status)
+       VALUES ($1, 'ROUTE_SET', $2, 'pending')`,
+      [
+        fax.driver_phone,
+        'تم تحديد خط سير رحلتك: ' + data.route + '. مستحق النقل: ' + total + ' ريال.',
+      ]
+    );
+
+    await client.query('COMMIT');
+
+    return {
+      id: faxId,
+      route: data.route,
+      transport_total: total,
+      base_quantity: baseQty,
+      new_status: 'READY_FOR_TRANSIT',
+    };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
+module.exports.listAwaitingRoute = listAwaitingRoute;
+module.exports.setRouteAndTransport = setRouteAndTransport;
