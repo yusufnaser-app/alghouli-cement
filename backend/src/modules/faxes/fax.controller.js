@@ -28,6 +28,9 @@ const transportSchema = z.object({
   unit: z.enum(['bag', 'ton']).optional(),
   baseOn: z.enum(['approved_quantity','loaded_quantity','delivered_quantity','requested_quantity']).optional(),
   editReason: z.string().max(500).optional(),
+  transportPayer: z.enum(['institution', 'trader']).optional(),
+  transportPayerTraderId: z.string().uuid().optional(),
+  transportPayerNote: z.string().max(500).optional(),
 });
 const issueSchema = z.object({ faxNumber: z.string().min(1).max(50) });
 const cancelSchema = z.object({ reason: z.string().max(500).optional() });

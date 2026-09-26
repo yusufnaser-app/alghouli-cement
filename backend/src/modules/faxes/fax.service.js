@@ -716,6 +716,9 @@ const setRouteAndTransport = async (faxId, data, userId) => {
            transport_set_at = NOW(),
            route_set_by = $9,
            route_set_at = NOW(),
+           transport_payer = $11,
+           transport_payer_trader_id = $12,
+           transport_payer_note = $13,
            status = 'READY_FOR_TRANSIT',
            status_updated_at = NOW(),
            updated_at = NOW()
@@ -731,11 +734,18 @@ const setRouteAndTransport = async (faxId, data, userId) => {
         data.baseOn || 'loaded_quantity',
         userId,
         faxId,
+        payerType,
+        payerTraderId,
+        data.transportPayerNote || null,
       ]
     );
 
-    // سجل في driver_ledger (فقط إذا لم يكن سائق تاجر)
-    if (fax.driver_type !== 'trader_driver') {
+    // تحديد من يتحمل أجور النقل
+    const payerType = data.transportPayer || 'institution';
+    const payerTraderId = data.transportPayerTraderId || null;
+
+    // سجل في driver_ledger (فقط إذا المؤسسة تدفع)
+    if (payerType === 'institution' && fax.driver_type !== 'trader_driver') {
       const d = await client.query(
         `SELECT current_balance FROM drivers WHERE id = $1`,
         [fax.driver_id]
