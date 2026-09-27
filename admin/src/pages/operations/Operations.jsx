@@ -21,10 +21,13 @@ export default function Operations() {
   const [tab, setTab] = useState('pending');
   const [pending, setPending] = useState([]);
   const [routePrice, setRoutePrice] = useState([]);
+  const [traders, setTraders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [showIssue, setShowIssue] = useState(false);
+  const [showRouteModal, setShowRouteModal] = useState(false);
 
   useEffect(() => { load(); }, [tab]);
 
@@ -36,8 +39,14 @@ export default function Operations() {
         const r = await client.get('/faxes/pending');
         setPending(r.data.data || []);
       } else if (tab === 'route-price') {
-        const r = await client.get('/faxes/pending-route-price');
+        const [r, tradersRes] = await Promise.all([
+          client.get('/faxes/pending-route-price'),
+          client.get('/admin/customers'),
+        ]);
         setRoutePrice(r.data.data || []);
+        setTraders((tradersRes.data.data || []).filter(
+          (c) => c.customer_type === 'trader' || c.customer_type === 'distributor'
+        ));
       }
     } catch (err) {
       setError(handleError(err));
@@ -53,45 +62,6 @@ export default function Operations() {
     try {
       await client.patch(`/faxes/${id}/approve`);
       alert('✅ تم الاعتماد');
-      setSelected(null);
-      load();
-    } catch (err) { alert(handleError(err)); }
-  };
-
-  const issue = async (id) => {
-    const num = window.prompt('أدخل رقم الفاكس:');
-    if (!num) return;
-    try {
-      await client.patch(`/faxes/${id}/issue-and-notify`, { faxNumber: num });
-      alert('✅ تم الإصدار وإرسال SMS للسائق');
-      setSelected(null);
-      load();
-    } catch (err) { alert(handleError(err)); }
-  };
-
-  const setRoute = async (id) => {
-    const route = window.prompt('أدخل خط السير:\n(مثال: عمران ← صنعاء ← السبعين)');
-    if (!route) return;
-    try {
-      await client.patch(`/faxes/${id}/route`, { route });
-      alert('✅ تم تحديد خط السير');
-      setSelected(null);
-      load();
-    } catch (err) { alert(handleError(err)); }
-  };
-
-  const setTransport = async (id) => {
-    const rate = window.prompt('أدخل سعر النقل (ريال/كيس):');
-    if (!rate) return;
-    const rateNum = parseFloat(rate);
-    if (isNaN(rateNum) || rateNum <= 0) { alert('سعر غير صحيح'); return; }
-    try {
-      await client.patch(`/faxes/${id}/transport`, {
-        rate: rateNum,
-        unit: 'bag',
-        baseOn: 'approved_quantity',
-      });
-      alert('✅ تم تحديد سعر النقل');
       setSelected(null);
       load();
     } catch (err) { alert(handleError(err)); }
@@ -255,23 +225,37 @@ export default function Operations() {
                 </button>
               )}
               {selected.status === 'APPROVED' && (
-                <button className="btn btn-success" onClick={() => issue(selected.id)}>
+                <button className="btn btn-success" onClick={() => setShowIssue(true)}>
                   📄 إصدار + إشعار SMS
                 </button>
               )}
-              {selected.status === 'ISSUED' && !selected.route && (
-                <button className="btn btn-warning" onClick={() => setRoute(selected.id)}>
-                  🗺️ تحديد خط السير
-                </button>
-              )}
-              {selected.status === 'ISSUED' && !selected.transport_rate && (
-                <button className="btn btn-warning" onClick={() => setTransport(selected.id)}>
-                  💰 تحديد سعر النقل
+              {selected.status === 'ISSUED' && (!selected.route || !selected.transport_rate) && (
+                <button className="btn btn-warning" onClick={() => setShowRouteModal(true)}>
+                  🗺️ تحديد خط السير والأجرة
                 </button>
               )}
             </div>
           </div>
         </div>
+      )}
+
+      {/* نافذة إصدار الفاكس */}
+      {showIssue && selected && (
+        <IssueFaxModal
+          fax={selected}
+          onClose={() => setShowIssue(false)}
+          onIssued={() => { setShowIssue(false); setSelected(null); load(); }}
+        />
+      )}
+
+      {/* نافذة تحديد خط السير والأجرة (نفس منطق "بانتظار خط السير" بما فيه من يتحمل الأجرة) */}
+      {showRouteModal && selected && (
+        <RouteTransportModal
+          fax={selected}
+          traders={traders}
+          onClose={() => setShowRouteModal(false)}
+          onSaved={() => { setShowRouteModal(false); setSelected(null); load(); }}
+        />
       )}
 
       {/* نافذة الإنشاء المباشر */}
@@ -281,6 +265,225 @@ export default function Operations() {
           onCreated={() => { setShowCreate(false); load(); }}
         />
       )}
+    </div>
+  );
+}
+
+// === نافذة إصدار فاكس (بديل window.prompt) ===
+function IssueFaxModal({ fax, onClose, onIssued }) {
+  const [faxNumber, setFaxNumber] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const save = async () => {
+    if (!faxNumber.trim()) { setError('رقم الفاكس مطلوب'); return; }
+    setSaving(true);
+    setError('');
+    try {
+      await client.patch(`/faxes/${fax.id}/issue-and-notify`, { faxNumber: faxNumber.trim() });
+      onIssued();
+    } catch (err) {
+      setError(handleError(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+        <div className="modal-header">
+          <h3>📄 إصدار الفاكس</h3>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+        <div className="modal-body">
+          {error && <div className="alert alert-error">{error}</div>}
+          <div className="form-group">
+            <label className="form-label">رقم الفاكس *</label>
+            <input
+              className="form-input"
+              value={faxNumber}
+              autoFocus
+              onChange={(e) => setFaxNumber(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && save()}
+              placeholder="مثال: FX-2026-00012"
+            />
+          </div>
+          <div className="alert alert-info" style={{ marginTop: 8 }}>
+            سيصل السائق إشعارًا داخل التطبيق ورسالة SMS فور الإصدار.
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose}>إلغاء</button>
+          <button className="btn btn-success" onClick={save} disabled={saving}>
+            {saving ? '...' : '✅ إصدار وإشعار السائق'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// === نافذة تحديد خط السير والأجرة — تستخدم /route-transport الموحّد والآمن فقط ===
+function RouteTransportModal({ fax, traders, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    route: fax.route || '',
+    deliveryGovernorate: fax.delivery_governorate || '',
+    deliveryArea: fax.delivery_area || '',
+    deliveryAddress: fax.delivery_address || '',
+    rate: fax.transport_rate || '',
+    unit: fax.transport_rate_unit || 'bag',
+    baseOn: 'requested_quantity',
+    transportPayer: 'institution',
+    transportPayerTraderId: '',
+    transportPayerNote: '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const fmt = (n) => (parseFloat(n) || 0).toLocaleString('en-US');
+  const baseQty = parseFloat(fax.requested_quantity || 0);
+  const totalTransport = (parseFloat(form.rate) || 0) * baseQty;
+
+  const save = async () => {
+    if (!form.route.trim()) { setError('خط السير مطلوب'); return; }
+    if (!form.rate || parseFloat(form.rate) <= 0) { setError('سعر النقل مطلوب'); return; }
+    if (form.transportPayer === 'trader' && !form.transportPayerTraderId) {
+      setError('يرجى اختيار التاجر الذي يتحمل الأجرة');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await client.patch(`/faxes/${fax.id}/route-transport`, {
+        route: form.route,
+        deliveryGovernorate: form.deliveryGovernorate,
+        deliveryArea: form.deliveryArea,
+        deliveryAddress: form.deliveryAddress,
+        rate: parseFloat(form.rate),
+        unit: form.unit,
+        baseOn: form.baseOn,
+        transportPayer: form.transportPayer,
+        transportPayerTraderId: form.transportPayer === 'trader' ? form.transportPayerTraderId : undefined,
+        transportPayerNote: form.transportPayerNote,
+      });
+      onSaved();
+    } catch (err) {
+      setError(handleError(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 700 }}>
+        <div className="modal-header">
+          <h3>🗺️ تحديد خط السير والأجرة</h3>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+        <div className="modal-body">
+          {error && <div className="alert alert-error">{error}</div>}
+
+          <div style={{ background: '#F8F9FA', padding: 14, borderRadius: 10, marginBottom: 16 }}>
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 13 }}>
+              <span><strong>السائق:</strong> {fax.driver_name}</span>
+              <span><strong>القاطرة:</strong> {fax.plate_number}</span>
+              <span><strong>المصنع:</strong> {fax.factory_name}</span>
+              <span><strong>الكمية المطلوبة:</strong> {fmt(fax.requested_quantity)} كيس</span>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">خط السير *</label>
+            <input
+              className="form-input"
+              value={form.route}
+              onChange={(e) => setForm({ ...form, route: e.target.value })}
+              placeholder="مثال: عمران ← صنعاء ← السبعين"
+            />
+          </div>
+
+          <div className="grid-2">
+            <div className="form-group">
+              <label className="form-label">أجرة النقل (ريال) *</label>
+              <input
+                type="number"
+                className="form-input"
+                value={form.rate}
+                onChange={(e) => setForm({ ...form, rate: e.target.value })}
+                placeholder="150"
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">الوحدة</label>
+              <select
+                className="form-select"
+                value={form.unit}
+                onChange={(e) => setForm({ ...form, unit: e.target.value })}
+              >
+                <option value="bag">ريال / كيس</option>
+                <option value="ton">ريال / طن</option>
+              </select>
+            </div>
+          </div>
+
+          {/* من يدفع أجور النقل */}
+          <div className="form-group" style={{
+            padding: 14, background: '#FFF9C4', borderRadius: 10, border: '2px solid #FFC107',
+          }}>
+            <label className="form-label" style={{ color: '#F57F17', fontWeight: 'bold', fontSize: 14, marginBottom: 12 }}>
+              💰 من يتحمل أجور النقل؟
+            </label>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className={'btn ' + (form.transportPayer === 'institution' ? 'btn-primary' : 'btn-secondary')}
+                onClick={() => setForm({ ...form, transportPayer: 'institution', transportPayerTraderId: '' })}
+                style={{ flex: 1, minWidth: 140, padding: '10px 16px' }}
+              >
+                🏢 المؤسسة
+              </button>
+              <button
+                type="button"
+                className={'btn ' + (form.transportPayer === 'trader' ? 'btn-primary' : 'btn-secondary')}
+                onClick={() => setForm({ ...form, transportPayer: 'trader' })}
+                style={{ flex: 1, minWidth: 140, padding: '10px 16px' }}
+              >
+                👤 التاجر
+              </button>
+            </div>
+
+            {form.transportPayer === 'trader' && (
+              <select
+                className="form-select"
+                value={form.transportPayerTraderId}
+                onChange={(e) => setForm({ ...form, transportPayerTraderId: e.target.value })}
+              >
+                <option value="">— اختر التاجر —</option>
+                {traders.map((t) => (
+                  <option key={t.id} value={t.id}>{t.full_name} — {t.phone}</option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {form.rate && parseFloat(form.rate) > 0 && (
+            <div style={{ padding: 14, background: '#E8F5E9', borderRadius: 10, marginTop: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 18 }}>
+                <span>إجمالي الأجرة:</span>
+                <strong style={{ color: '#2E7D32' }}>{fmt(totalTransport)} ريال</strong>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose}>إلغاء</button>
+          <button className="btn btn-success" onClick={save} disabled={saving}>
+            {saving ? '...' : '💾 حفظ وتقييد المستحق'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

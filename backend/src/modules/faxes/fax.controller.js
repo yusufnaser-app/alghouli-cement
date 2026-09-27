@@ -22,12 +22,14 @@ const staffRequestSchema = z.object({
   notes: z.string().max(500).optional(),
 });
 
-const routeSchema = z.object({ route: z.string().min(3).max(500) });
-const transportSchema = z.object({
+const routeTransportSchema = z.object({
+  route: z.string().min(3).max(500),
+  deliveryGovernorate: z.string().max(200).optional(),
+  deliveryArea: z.string().max(200).optional(),
+  deliveryAddress: z.string().max(500).optional(),
   rate: z.number().positive(),
   unit: z.enum(['bag', 'ton']).optional(),
-  baseOn: z.enum(['approved_quantity','loaded_quantity','delivered_quantity','requested_quantity']).optional(),
-  editReason: z.string().max(500).optional(),
+  baseOn: z.enum(['loaded_quantity','requested_quantity','delivered_quantity']).optional(),
   transportPayer: z.enum(['institution', 'trader']).optional(),
   transportPayerTraderId: z.string().uuid().optional(),
   transportPayerNote: z.string().max(500).optional(),
@@ -83,18 +85,6 @@ const issueAndNotify = asyncHandler(async (req, res) => {
   return response.success(res, r, 'تم إصدار الفاكس وإشعار السائق');
 });
 
-const setRoute = asyncHandler(async (req, res) => {
-  const { route } = routeSchema.parse(req.body);
-  const r = await service.setRoute(req.params.id, route, req.user.id);
-  return response.success(res, r, 'تم تحديد خط السير');
-});
-
-const setTransport = asyncHandler(async (req, res) => {
-  const data = transportSchema.parse(req.body);
-  const r = await service.setTransport(req.params.id, data, req.user.id);
-  return response.success(res, r, 'تم تحديد سعر النقل');
-});
-
 const recordLoading = asyncHandler(async (req, res) => {
   const { loadedQuantity } = loadingSchema.parse(req.body);
   const r = await service.recordLoading(req.params.id, loadedQuantity, req.user.id);
@@ -139,12 +129,13 @@ const awaitingRoute = asyncHandler(async (req, res) => {
 });
 
 const setRouteTransport = asyncHandler(async (req, res) => {
-  const r = await service.setRouteAndTransport(req.params.id, req.body, req.user.id);
+  const data = routeTransportSchema.parse(req.body);
+  const r = await service.setRouteAndTransport(req.params.id, data, req.user.id);
   return response.success(res, r, 'تم تحديد خط السير والأجرة');
 });
 
 module.exports = {
   request, staffRequest, myFaxes, enterFactory, currentTrip, confirmLoading, awaitingRoute, setRouteTransport,
   pending, pendingRoutePrice, approve, issue, issueAndNotify,
-  setRoute, setTransport, recordLoading, cancel, getById,
+  recordLoading, cancel, getById,
 };

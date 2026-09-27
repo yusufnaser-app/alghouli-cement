@@ -387,64 +387,11 @@ module.exports = {
   approveFax, issueFax, issueAndNotify,
 };
 
-const setRoute = async (faxId, route, userId) => {
-  const r = await query(
-    `UPDATE loading_faxes SET route = $1, route_set_by = $2, route_set_at = NOW(),
-     updated_at = NOW() WHERE id = $3 RETURNING *`,
-    [route, userId, faxId]
-  );
-  if (r.rows.length === 0) {
-    const err = new Error('غير موجود');
-    err.status = 404;
-    throw err;
-  }
-  return r.rows[0];
-};
-
-const setTransport = async (faxId, data, userId) => {
-  const f = await query(
-    `SELECT f.*, d.id AS driver_id, d.driver_type FROM loading_faxes f
-     JOIN drivers d ON d.id = f.driver_id WHERE f.id = $1`,
-    [faxId]
-  );
-  if (f.rows.length === 0) {
-    const err = new Error('غير موجود');
-    err.status = 404;
-    throw err;
-  }
-  const fax = f.rows[0];
-  const baseQty = fax.approved_quantity || fax.requested_quantity || 0;
-  const rate = parseFloat(data.rate);
-  const total = rate * parseFloat(baseQty);
-
-  await query(
-    `UPDATE loading_faxes SET transport_rate = $1, transport_rate_unit = $2,
-     transport_total = $3, transport_base_on = $4, transport_set_by = $5,
-     transport_set_at = NOW(), updated_at = NOW() WHERE id = $6`,
-    [rate, data.unit || 'bag', total, data.baseOn || 'approved_quantity', userId, faxId]
-  );
-
-  if (fax.driver_type === 'trader_driver') {
-    return { transport_total: total, skipped_ledger: true };
-  }
-
-  const d = await query(`SELECT current_balance FROM drivers WHERE id = $1`, [fax.driver_id]);
-  const newBalance = parseFloat(d.rows[0].current_balance || 0) + total;
-
-  await query(
-    `INSERT INTO driver_ledger
-     (driver_id, order_id, transaction_type, description, debit, credit,
-      balance_after, reference_code, created_by)
-     VALUES ($1, $2, 'transport_due', $3, $4, 0, $5, $6, $7)`,
-    [fax.driver_id, fax.order_id,
-     'مستحق نقل — فاكس ' + (fax.fax_number || 'بدون رقم'),
-     total, newBalance, fax.fax_number, userId]
-  );
-
-  await query(`UPDATE drivers SET current_balance = $1 WHERE id = $2`, [newBalance, fax.driver_id]);
-
-  return { transport_total: total, base_quantity: parseFloat(baseQty) };
-};
+// ملاحظة: كانت هنا نسختان قديمتان منفصلتان setRoute() و setTransport()
+// تم إلغاؤهما لأنهما كانتا تسمحان بتحديد خط السير/الأجرة دون تحديد "من يتحمل الأجرة"
+// ودون إشعار السائق ودون نقل حالة الفاكس إلى READY_FOR_TRANSIT، ما يعرّض حساب
+// السائق لقيود مالية غير مكتملة. استُبدلتا بالكامل بـ setRouteAndTransport() أدناه
+// وهي المسار الوحيد المعتمد الآن عبر PATCH /faxes/:id/route-transport.
 
 const enterFactory = async (faxId, driverUserId) => {
   const r = await query(
@@ -569,8 +516,6 @@ const listPendingRouteAndPrice = async () => {
   return r.rows;
 };
 
-module.exports.setRoute = setRoute;
-module.exports.setTransport = setTransport;
 module.exports.enterFactory = enterFactory;
 module.exports.recordLoading = recordLoading;
 module.exports.listPendingFaxes = listPendingFaxes;
@@ -748,6 +693,14 @@ const setRouteAndTransport = async (faxId, data, userId) => {
 
     const fax = f.rows[0];
 
+    // منع إعادة تحديد خط السير/الأجرة لفاكس سبق تحديده (لمنع تكرار قيد المستحق في حساب السائق)
+    if (fax.transport_rate !== null && fax.transport_rate !== undefined) {
+      const err = new Error('تم تحديد خط السير وأجرة النقل لهذا الفاكس مسبقًا');
+      err.status = 400;
+      err.code = 'ALREADY_ROUTED';
+      throw err;
+    }
+
     // قاعدة الحساب
     let baseQty = parseFloat(fax.loaded_quantity || fax.requested_quantity || 0);
     if (data.baseOn === 'requested_quantity') {
@@ -847,16 +800,17 @@ const setRouteAndTransport = async (faxId, data, userId) => {
         const traderPhone = traderInfo.rows[0].phone;
 
         // إشعار in-app
+        const traderBody = `أجور النقل (${fmt(total)} ريال) على التاجر: ${traderName} — رقمه: ${traderPhone}. يرجى التواصل معه لاستلام مستحقاتك.`;
         await client.query(
           `INSERT INTO notifications (user_id, title_ar, body_ar, type, reference_type, reference_id)
            SELECT d.user_id,
                   'أجور النقل على التاجر',
-                  'أجور النقل (${fmt(total)} ريال) على التاجر: ${traderName} — رقمه: ${traderPhone}. يرجى التواصل معه لاستلام مستحقاتك.',
+                  $1,
                   'TRANSPORT_ON_TRADER',
                   'loading_faxes',
-                  $1
-           FROM drivers d WHERE d.id = $2`,
-          [faxId, fax.driver_id]
+                  $2
+           FROM drivers d WHERE d.id = $3`,
+          [traderBody, faxId, fax.driver_id]
         );
 
         // SMS queue
@@ -871,16 +825,17 @@ const setRouteAndTransport = async (faxId, data, userId) => {
       }
     } else {
       // الحالة 2: الأجرة على المؤسسة
+      const institutionBody = `خط السير: ${data.route} — مستحق النقل: ${fmt(total)} ريال من المؤسسة. يمكنك بدء الرحلة.`;
       await client.query(
         `INSERT INTO notifications (user_id, title_ar, body_ar, type, reference_type, reference_id)
          SELECT d.user_id,
                 'تم تحديد خط السير',
-                'خط السير: ${data.route} — مستحق النقل: ${total} ريال من المؤسسة. يمكنك بدء الرحلة.',
+                $1,
                 'ROUTE_SET',
                 'loading_faxes',
-                $1
-         FROM drivers d WHERE d.id = $2`,
-        [faxId, fax.driver_id]
+                $2
+         FROM drivers d WHERE d.id = $3`,
+        [institutionBody, faxId, fax.driver_id]
       );
 
       await client.query(

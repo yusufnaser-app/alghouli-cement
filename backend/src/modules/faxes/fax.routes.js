@@ -24,8 +24,6 @@ router.get('/pending-route-price', requireRoles('transport', 'admin'), controlle
 router.patch('/:id/approve', requireRoles('transport', 'admin'), controller.approve);
 router.patch('/:id/issue', requireRoles('transport', 'admin'), controller.issue);
 router.patch('/:id/issue-and-notify', requireRoles('transport', 'admin'), controller.issueAndNotify);
-router.patch('/:id/route', requireRoles('transport', 'admin'), controller.setRoute);
-router.patch('/:id/transport', requireRoles('transport', 'admin'), controller.setTransport);
 router.patch('/:id/loading', requireRoles('transport', 'admin'), controller.recordLoading);
 router.patch('/:id/cancel', requireRoles('transport', 'admin'), controller.cancel);
 
