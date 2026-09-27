@@ -173,7 +173,11 @@ const requestFaxByStaff = async (data, staffUserId) => {
     await client.query('BEGIN');
 
     const d = await client.query(
-      `SELECT id, driver_type, owner_trader_id, full_name FROM drivers WHERE id = $1`,
+      `SELECT d.id, d.driver_type, d.owner_trader_id, d.full_name,
+              COALESCE(d.phone, u.phone) AS phone
+       FROM drivers d
+       LEFT JOIN users u ON u.id = d.user_id
+       WHERE d.id = $1`,
       [data.driverId]
     );
     if (d.rows.length === 0) {
@@ -259,15 +263,23 @@ const requestFaxByStaff = async (data, staffUserId) => {
       [faxNumber, f.rows[0].name_ar, data.quantity, fax.rows[0].id, driver.id]
     );
 
-    // SMS queue
-    await client.query(
-      `INSERT INTO sms_messages (phone, message_type, message, status)
-       VALUES ($1, 'FAX_ISSUED', $2, 'pending')`,
-      [
-        driver.phone,
-        `مؤسسة الغولي: تم إصدار فاكس التحميل رقم ${faxNumber} من ${f.rows[0].name_ar}. الكمية: ${data.quantity} كيس. يرجى التوجه للمصنع.`,
-      ]
-    );
+    // SMS queue (بنقطة حفظ SAVEPOINT حتى لا يفشل إنشاء الفاكس كله إن تعذّر إدراج SMS
+    // — مثلاً بسبب هاتف سائق غير مسجّل. بدون SAVEPOINT، فشل هذا الاستعلام وحده
+    // كان يُدخل معاملة قاعدة البيانات كلها في حالة "معلّقة" فتفشل حتى العمليات الناجحة)
+    try {
+      await client.query('SAVEPOINT sms_sp');
+      await client.query(
+        `INSERT INTO sms_messages (phone, message_type, message, status)
+         VALUES ($1, 'FAX_ISSUED', $2, 'pending')`,
+        [
+          driver.phone,
+          `مؤسسة الغولي: تم إصدار فاكس التحميل رقم ${faxNumber} من ${f.rows[0].name_ar}. الكمية: ${data.quantity} كيس. يرجى التوجه للمصنع.`,
+        ]
+      );
+    } catch (smsErr) {
+      await client.query('ROLLBACK TO SAVEPOINT sms_sp');
+      console.error('SMS queue error (تم تجاهله، الفاكس تم إنشاؤه بنجاح):', smsErr.message);
+    }
 
     await client.query('COMMIT');
     return {
@@ -320,10 +332,11 @@ const issueAndNotify = async (faxId, faxNumber, staffUserId) => {
   try {
     await client.query('BEGIN');
     const f = await client.query(
-      `SELECT f.*, d.full_name AS driver_name, d.phone AS driver_phone,
+      `SELECT f.*, d.full_name AS driver_name, COALESCE(d.phone, u.phone) AS driver_phone,
               s.name_ar AS factory_name
        FROM loading_faxes f
        JOIN drivers d ON d.id = f.driver_id
+       LEFT JOIN users u ON u.id = d.user_id
        LEFT JOIN product_sources s ON s.id = f.factory_id
        WHERE f.id = $1`,
       [faxId]
@@ -347,14 +360,20 @@ const issueAndNotify = async (faxId, faxNumber, staffUserId) => {
       [faxNumber, staffUserId, faxId]
     );
 
-    await client.query(
-      `INSERT INTO sms_messages (phone, message_type, message, status)
-       VALUES ($1, 'FAX_ISSUED', $2, 'pending')`,
-      [
-        fax.driver_phone,
-        `تم إصدار فاكس التحميل رقم ${faxNumber} من ${fax.factory_name || 'المصنع'}. يرجى التوجه للمصنع. الكمية: ${fax.requested_quantity} كيس.`,
-      ]
-    );
+    try {
+      await client.query('SAVEPOINT sms_sp');
+      await client.query(
+        `INSERT INTO sms_messages (phone, message_type, message, status)
+         VALUES ($1, 'FAX_ISSUED', $2, 'pending')`,
+        [
+          fax.driver_phone,
+          `تم إصدار فاكس التحميل رقم ${faxNumber} من ${fax.factory_name || 'المصنع'}. يرجى التوجه للمصنع. الكمية: ${fax.requested_quantity} كيس.`,
+        ]
+      );
+    } catch (smsErr) {
+      await client.query('ROLLBACK TO SAVEPOINT sms_sp');
+      console.error('SMS queue error (تم تجاهله):', smsErr.message);
+    }
 
     // FCM Push
     const fcmRes = await client.query(
@@ -678,9 +697,10 @@ const setRouteAndTransport = async (faxId, data, userId) => {
 
     const f = await client.query(
       `SELECT f.*, d.id AS driver_id, d.driver_type, d.full_name AS driver_name,
-              d.phone AS driver_phone
+              COALESCE(d.phone, u.phone) AS driver_phone
        FROM loading_faxes f
        JOIN drivers d ON d.id = f.driver_id
+       LEFT JOIN users u ON u.id = d.user_id
        WHERE f.id = $1`,
       [faxId]
     );
@@ -789,22 +809,38 @@ const setRouteAndTransport = async (faxId, data, userId) => {
     if (payerType === 'trader' && payerTraderId) {
       // الحالة 1: الأجرة على التاجر
       const traderInfo = await client.query(
-        `SELECT u.full_name, u.phone
+        `SELECT u.full_name, u.phone,
+                a.governorate, a.area, a.address_text
          FROM customers c
          JOIN users u ON u.id = c.user_id
-         WHERE c.id = $1`,
+         LEFT JOIN customer_addresses a ON a.customer_id = c.id AND a.is_default = true
+         WHERE c.id = $1
+         ORDER BY a.created_at DESC
+         LIMIT 1`,
         [payerTraderId]
       );
       if (traderInfo.rows.length > 0) {
         const traderName = traderInfo.rows[0].full_name;
         const traderPhone = traderInfo.rows[0].phone;
+        const traderAddressParts = [
+          traderInfo.rows[0].governorate,
+          traderInfo.rows[0].area,
+          traderInfo.rows[0].address_text,
+        ].filter(Boolean);
+        const traderAddress = traderAddressParts.length > 0
+          ? traderAddressParts.join(' — ')
+          : 'غير مسجَّل';
 
-        // إشعار in-app
-        const traderBody = `أجور النقل (${fmt(total)} ريال) على التاجر: ${traderName} — رقمه: ${traderPhone}. يرجى التواصل معه لاستلام مستحقاتك.`;
+        // إشعار in-app — يتضمن خط السير، عنوان التاجر، المبلغ، وتوضيح أنه مقيّد على التاجر
+        const traderBody =
+          `خط السير: ${data.route}\n` +
+          `أجور النقل: ${fmt(total)} ريال — مقيّدة على حساب التاجر (لن تُقيَّد عليك).\n` +
+          `التاجر: ${traderName} — ${traderPhone}\n` +
+          `عنوان التاجر: ${traderAddress}`;
         await client.query(
           `INSERT INTO notifications (user_id, title_ar, body_ar, type, reference_type, reference_id)
            SELECT d.user_id,
-                  'أجور النقل على التاجر',
+                  'أجور النقل مقيّدة على التاجر',
                   $1,
                   'TRANSPORT_ON_TRADER',
                   'loading_faxes',
@@ -813,15 +849,21 @@ const setRouteAndTransport = async (faxId, data, userId) => {
           [traderBody, faxId, fax.driver_id]
         );
 
-        // SMS queue
-        await client.query(
-          `INSERT INTO sms_messages (phone, message_type, message, status)
-           VALUES ($1, 'TRANSPORT_ON_TRADER', $2, 'pending')`,
-          [
-            fax.driver_phone,
-            `مؤسسة الغولي: أجور النقل (${total} ريال) على التاجر ${traderName} — رقمه: ${traderPhone}. يرجى التواصل معه.`,
-          ]
-        );
+        // SMS queue (بنقطة حفظ حتى لا يفشل تحديد خط السير كله إن كان هاتف السائق ناقصًا)
+        try {
+          await client.query('SAVEPOINT sms_sp');
+          await client.query(
+            `INSERT INTO sms_messages (phone, message_type, message, status)
+             VALUES ($1, 'TRANSPORT_ON_TRADER', $2, 'pending')`,
+            [
+              fax.driver_phone,
+              `مؤسسة الغولي: خط السير: ${data.route}. أجور النقل (${fmt(total)} ريال) مقيّدة على التاجر ${traderName} — رقمه: ${traderPhone} — عنوانه: ${traderAddress}.`,
+            ]
+          );
+        } catch (smsErr) {
+          await client.query('ROLLBACK TO SAVEPOINT sms_sp');
+          console.error('SMS queue error (تم تجاهله):', smsErr.message);
+        }
       }
     } else {
       // الحالة 2: الأجرة على المؤسسة
@@ -838,14 +880,20 @@ const setRouteAndTransport = async (faxId, data, userId) => {
         [institutionBody, faxId, fax.driver_id]
       );
 
-      await client.query(
-        `INSERT INTO sms_messages (phone, message_type, message, status)
-         VALUES ($1, 'ROUTE_SET', $2, 'pending')`,
-        [
-          fax.driver_phone,
-          `مؤسسة الغولي: تم تحديد خط سير رحلتك: ${data.route}. مستحق النقل: ${total} ريال من المؤسسة.`,
-        ]
-      );
+      try {
+        await client.query('SAVEPOINT sms_sp');
+        await client.query(
+          `INSERT INTO sms_messages (phone, message_type, message, status)
+           VALUES ($1, 'ROUTE_SET', $2, 'pending')`,
+          [
+            fax.driver_phone,
+            `مؤسسة الغولي: تم تحديد خط سير رحلتك: ${data.route}. مستحق النقل: ${fmt(total)} ريال من المؤسسة.`,
+          ]
+        );
+      } catch (smsErr) {
+        await client.query('ROLLBACK TO SAVEPOINT sms_sp');
+        console.error('SMS queue error (تم تجاهله):', smsErr.message);
+      }
     }
 
     // FCM Push

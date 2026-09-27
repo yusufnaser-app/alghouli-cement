@@ -58,10 +58,17 @@ const createBulkFaxes = async (items, staffUserId) => {
   try {
     await client.query('BEGIN');
     for (const item of items) {
+      // نقطة حفظ لكل عنصر: بدونها، فشل عنصر واحد (مثل هاتف سائق ناقص) كان
+      // يُدخل المعاملة كلها في حالة "معلّقة" في PostgreSQL، فتُلغى صامتةً كل
+      // العناصر الناجحة في نفس الدفعة عند التنفيذ (COMMIT) رغم ظهورها كأنها نجحت.
+      await client.query('SAVEPOINT item_sp');
       try {
         const d = await client.query(
-          `SELECT id, driver_type, owner_trader_id FROM drivers 
-           WHERE id = $1 AND approval_status = 'active'`,
+          `SELECT d.id, d.driver_type, d.owner_trader_id,
+                  COALESCE(d.phone, u.phone) AS phone
+           FROM drivers d
+           LEFT JOIN users u ON u.id = d.user_id
+           WHERE d.id = $1 AND d.approval_status = 'active'`,
           [item.driverId]
         );
         if (d.rows.length === 0) {
@@ -169,15 +176,23 @@ const createBulkFaxes = async (items, staffUserId) => {
           );
         }
 
-        await client.query(
-          `INSERT INTO sms_messages (phone, message_type, message, status)
-           VALUES ($1, 'FAX_ISSUED', $2, 'pending')`,
-          [
-            driver.phone,
-            `مؤسسة الغولي: تم إصدار فاكس التحميل رقم ${faxNumber} من ${f.rows[0].name_ar}. الكمية: ${item.quantity} كيس.`,
-          ]
-        );
+        // SMS queue — بنقطة حفظ فرعية حتى لا يفشل إنشاء الفاكس نفسه لو تعذّر إدراج SMS
+        try {
+          await client.query('SAVEPOINT sms_sp');
+          await client.query(
+            `INSERT INTO sms_messages (phone, message_type, message, status)
+             VALUES ($1, 'FAX_ISSUED', $2, 'pending')`,
+            [
+              driver.phone,
+              `مؤسسة الغولي: تم إصدار فاكس التحميل رقم ${faxNumber} من ${f.rows[0].name_ar}. الكمية: ${item.quantity} كيس.`,
+            ]
+          );
+        } catch (smsErr) {
+          await client.query('ROLLBACK TO SAVEPOINT sms_sp');
+          console.error('SMS queue error (تم تجاهله، الفاكس تم إنشاؤه بنجاح):', smsErr.message);
+        }
 
+        await client.query('RELEASE SAVEPOINT item_sp');
         results.created.push({
           driverId: driver.id,
           faxId: fax.rows[0].id,
@@ -186,6 +201,7 @@ const createBulkFaxes = async (items, staffUserId) => {
           quantity: item.quantity,
         });
       } catch (err) {
+        await client.query('ROLLBACK TO SAVEPOINT item_sp');
         results.failed.push({
           driverId: item.driverId,
           driverName: item.driverName,
