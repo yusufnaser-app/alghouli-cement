@@ -21,6 +21,7 @@ const menuItems = [
     { path: '/incentives', label: 'حوافز المصانع', icon: '🎁', roles: ['admin', 'accountant'] },
     { path: '/categories', label: 'الأنواع', icon: '🎨', roles: ['admin'] },
     { path: '/traders', label: 'الموزعون', icon: '👥', roles: ['sales', 'accountant', 'admin'] },
+    { path: '/crm', label: 'تصنيف العملاء (CRM)', icon: '🎯', roles: ['sales', 'admin'] },
     { path: '/drivers', label: 'السائقون', icon: '🧑‍✈️', roles: ['transport', 'admin'] },
     { path: '/pending-drivers', label: 'طلبات السائقين', icon: '👤', roles: ['admin'], badge: 'drivers' },
     { path: '/driver-finances', label: 'حسابات السائقين', icon: '💰', roles: ['admin', 'accountant'] },
