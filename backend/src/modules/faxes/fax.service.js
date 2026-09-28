@@ -672,7 +672,8 @@ const driverConfirmLoading = async (faxId, driverUserId, loadedQty, notes) => {
        FROM loading_faxes f
        JOIN drivers d ON d.id = f.driver_id
        LEFT JOIN product_sources s ON s.id = f.factory_id
-       WHERE f.id = $1`,
+       WHERE f.id = $1
+       FOR UPDATE OF f`,
       [faxId]
     );
 
@@ -708,9 +709,11 @@ const driverConfirmLoading = async (faxId, driverUserId, loadedQty, notes) => {
            factory_exited_at = NOW(),
            loading_confirmed_by = $3,
            loading_confirmed_at = NOW(),
+           notes = CASE WHEN $5::text IS NULL OR $5::text = '' THEN notes
+                        ELSE COALESCE(notes || E'\n', '') || 'ملاحظة التحميل: ' || $5::text END,
            updated_at = NOW()
        WHERE id = $4`,
-      [loadedQty, diff, driverUserId, faxId]
+      [loadedQty, diff, driverUserId, faxId, notes ? String(notes).slice(0, 500) : null]
     );
 
     await client.query(
@@ -744,6 +747,27 @@ const driverConfirmLoading = async (faxId, driverUserId, loadedQty, notes) => {
          VALUES ('QUANTITY_DISCREPANCY', 'loading_faxes', $1, $2)`,
         [faxId, JSON.stringify({ requested, loaded: loadedQty, diff })]
       );
+
+      // تنبيه داخلي للمدير ومسؤول النقل (غير حرج: لا يُفشل تسجيل التحميل)
+      try {
+        await client.query('SAVEPOINT alert_sp');
+        await client.query(
+          `INSERT INTO notifications (user_id, title_ar, body_ar, type, reference_type, reference_id)
+           SELECT DISTINCT ur.user_id,
+                  'اختلاف في كمية التحميل',
+                  $1,
+                  'QUANTITY_DISCREPANCY', 'loading_faxes', $2
+           FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+           WHERE r.name IN ('admin', 'transport')`,
+          [
+            `السائق ${fax.driver_name} — ${fax.factory_name || 'المصنع'}: مطلوب ${requested} / محمّل ${loadedQty} (فرق ${diff}).`,
+            faxId,
+          ]
+        );
+      } catch (alertErr) {
+        await client.query('ROLLBACK TO SAVEPOINT alert_sp');
+        console.error('Discrepancy alert error (تم تجاهله):', alertErr.message);
+      }
     }
 
     await client.query('COMMIT');
