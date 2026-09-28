@@ -14,6 +14,7 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
   Map<String, dynamic>? _summary;
   List<Map<String, dynamic>> _ledger = [];
   bool _loading = true;
+  bool _failed = false;
   String _filter = 'all';
 
   @override
@@ -23,15 +24,23 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _failed = false;
+    });
     try {
       final s = await _service.mySummary();
       final l = await _service.myLedger();
+      if (!mounted) return;
       setState(() {
         _summary = s;
         _ledger = l;
       });
-    } catch (_) {}
+    } catch (_) {
+      if (!mounted) return;
+      _failed = true;
+    }
+    if (!mounted) return;
     setState(() => _loading = false);
   }
 
@@ -50,6 +59,9 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
     }
     return _ledger;
   }
+
+  double get _balanceValue =>
+      double.tryParse(_summary?['current_balance']?.toString() ?? '0') ?? 0;
 
   String _fmt(dynamic n) {
     final v = double.tryParse(n?.toString() ?? '0') ?? 0;
@@ -71,6 +83,20 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
+          : _failed
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.wifi_off, size: 48, color: AppColors.textSecondary),
+                  const SizedBox(height: 12),
+                  const Text('تعذّر تحميل مستحقاتك',
+                      style: TextStyle(fontSize: 14)),
+                  const SizedBox(height: 12),
+                  ElevatedButton(onPressed: _load, child: const Text('إعادة المحاولة')),
+                ],
+              ),
+            )
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(
@@ -118,9 +144,11 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          (_summary?['current_balance'] ?? 0) > 0
+                          _balanceValue > 0
                               ? 'مستحق لك من المؤسسة'
-                              : 'لا توجد مستحقات',
+                              : _balanceValue < 0
+                                  ? 'عليك للمؤسسة (سلف أو خصومات زائدة)'
+                                  : 'لا توجد مستحقات',
                           style: const TextStyle(
                               color: Colors.white70, fontSize: 12),
                         ),
@@ -293,6 +321,7 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
     final debit = double.tryParse(t['debit']?.toString() ?? '0') ?? 0;
     final credit = double.tryParse(t['credit']?.toString() ?? '0') ?? 0;
 
+    final increases = type == 'transport_due';
     String label = type;
     IconData icon = Icons.receipt;
     Color color = AppColors.primary;
@@ -361,11 +390,11 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    debit > 0 ? '+${_fmt(debit)}' : '-${_fmt(credit)}',
+                    increases ? '+${_fmt(debit)}' : '-${_fmt(debit > 0 ? debit : credit)}',
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.bold,
-                      color: debit > 0 ? AppColors.success : AppColors.danger,
+                      color: increases ? AppColors.success : AppColors.danger,
                     ),
                   ),
                   const SizedBox(height: 2),
