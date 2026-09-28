@@ -120,7 +120,8 @@ const recordAdvance = async (driverId, data, userId) => {
       throw err;
     }
     const balance = parseFloat(d.rows[0].current_balance || 0);
-    const newBalance = balance + data.amount;
+    // الرصيد = ما تدين به المؤسسة للسائق؛ السلفة والخصم يُنقصانه
+    const newBalance = balance - data.amount;
 
     await client.query(
       `INSERT INTO driver_ledger
@@ -170,7 +171,8 @@ const recordDeduction = async (driverId, data, userId) => {
       throw err;
     }
     const balance = parseFloat(d.rows[0].current_balance || 0);
-    const newBalance = balance + data.amount;
+    // الرصيد = ما تدين به المؤسسة للسائق؛ السلفة والخصم يُنقصانه
+    const newBalance = balance - data.amount;
 
     await client.query(
       `INSERT INTO driver_ledger

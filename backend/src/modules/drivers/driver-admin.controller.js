@@ -117,86 +117,50 @@ const listWithBalance = asyncHandler(async (req, res) => {
   return response.success(res, r.rows, 'السائقون');
 });
 
+const ledgerService = require('./driver-ledger.service');
+
+const parseAmount = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
 const payDriver = asyncHandler(async (req, res) => {
-  const { amount, method, reference, description } = req.body;
-  const { id } = req.params;
-  if (!amount || amount <= 0) return response.error(res, 'المبلغ مطلوب', 400);
-
-  const d = await query(`SELECT current_balance FROM drivers WHERE id = $1`, [id]);
-  if (d.rows.length === 0) return response.error(res, 'السائق غير موجود', 404);
-
-  const newBalance = parseFloat(d.rows[0].current_balance || 0) - parseFloat(amount);
-
-  await query(
-    `INSERT INTO driver_ledger
-     (driver_id, transaction_type, description, debit, credit, balance_after,
-      reference_code, created_by)
-     VALUES ($1, 'payment', $2, 0, $3, $4, $5, $6)`,
-    [id, description || `دفعة - ${method || 'نقدي'}`,
-     amount, newBalance, reference || null, req.user.id]
+  const amount = parseAmount(req.body.amount);
+  if (!amount) return response.error(res, 'المبلغ مطلوب', 400);
+  const { method, reference, description } = req.body;
+  const r = await ledgerService.recordPayment(
+    req.params.id, { amount, method, reference, description }, req.user.id
   );
-
-  await query(`UPDATE drivers SET current_balance = $1 WHERE id = $2`, [newBalance, id]);
-
   await query(
     `INSERT INTO notifications (user_id, title_ar, body_ar, type, reference_type, reference_id)
-     SELECT d.user_id,
-            'تم تسجيل دفعة',
-            'تم تحويل ' || $1 || ' ريال إلى حسابك.',
-            'PAYMENT_RECEIVED',
-            'drivers',
-            $2
+     SELECT d.user_id, 'تم تسجيل دفعة', 'تم تحويل ' || $1::text || ' ريال إلى حسابك.',
+            'PAYMENT_RECEIVED', 'drivers', d.id
      FROM drivers d WHERE d.id = $2`,
-    [amount, id]
+    [String(amount), req.params.id]
   );
-
-  return response.success(res, { new_balance: newBalance }, 'تم تسجيل الدفعة');
+  return response.success(res, r, 'تم تسجيل الدفعة');
 });
 
 const advanceDriver = asyncHandler(async (req, res) => {
-  const { amount, reference, description } = req.body;
-  const { id } = req.params;
-  if (!amount || amount <= 0) return response.error(res, 'المبلغ مطلوب', 400);
-
-  const d = await query(`SELECT current_balance FROM drivers WHERE id = $1`, [id]);
-  if (d.rows.length === 0) return response.error(res, 'السائق غير موجود', 404);
-
-  const newBalance = parseFloat(d.rows[0].current_balance || 0) + parseFloat(amount);
-
-  await query(
-    `INSERT INTO driver_ledger
-     (driver_id, transaction_type, description, debit, credit, balance_after,
-      reference_code, created_by)
-     VALUES ($1, 'advance', $2, $3, 0, $4, $5, $6)`,
-    [id, description || 'سلفة', amount, newBalance, reference || null, req.user.id]
+  const amount = parseAmount(req.body.amount);
+  if (!amount) return response.error(res, 'المبلغ مطلوب', 400);
+  const r = await ledgerService.recordAdvance(
+    req.params.id,
+    { amount, reference: req.body.reference, description: req.body.description },
+    req.user.id
   );
-
-  await query(`UPDATE drivers SET current_balance = $1 WHERE id = $2`, [newBalance, id]);
-
-  return response.success(res, { new_balance: newBalance }, 'تم تسجيل السلفة');
+  return response.success(res, r, 'تم تسجيل السلفة');
 });
 
 const deductDriver = asyncHandler(async (req, res) => {
-  const { amount, reason, reference } = req.body;
-  const { id } = req.params;
-  if (!amount || amount <= 0) return response.error(res, 'المبلغ مطلوب', 400);
-
-  const d = await query(`SELECT current_balance FROM drivers WHERE id = $1`, [id]);
-  if (d.rows.length === 0) return response.error(res, 'السائق غير موجود', 404);
-
-  const newBalance = parseFloat(d.rows[0].current_balance || 0) + parseFloat(amount);
-
-  await query(
-    `INSERT INTO driver_ledger
-     (driver_id, transaction_type, description, debit, credit, balance_after,
-      reference_code, created_by)
-     VALUES ($1, 'deduction', $2, $3, 0, $4, $5, $6)`,
-    [id, reason || 'خصم', amount, newBalance, reference || null, req.user.id]
+  const amount = parseAmount(req.body.amount);
+  if (!amount) return response.error(res, 'المبلغ مطلوب', 400);
+  const r = await ledgerService.recordDeduction(
+    req.params.id,
+    { amount, reference: req.body.reference, description: req.body.reason },
+    req.user.id
   );
-
-  await query(`UPDATE drivers SET current_balance = $1 WHERE id = $2`, [newBalance, id]);
-
-  return response.success(res, { new_balance: newBalance }, 'تم تسجيل الخصم');
+  return response.success(res, r, 'تم تسجيل الخصم');
 });
 
 const getStatement = asyncHandler(async (req, res) => {
