@@ -95,12 +95,19 @@ const requestFax = async (requestedByUserId, data) => {
 
     // تحقق من القاطرة
     const v = await client.query(
-      `SELECT id, plate_number FROM vehicles WHERE id = $1`,
+      `SELECT id, plate_number, current_driver_id FROM vehicles WHERE id = $1`,
       [data.vehicleId]
     );
     if (v.rows.length === 0) {
       const err = new Error('القاطرة غير موجودة');
       err.status = 404;
+      throw err;
+    }
+    // كان يمكن طلب فاكس على قاطرة سائق آخر؛ يجب أن تكون القاطرة مرتبطة بهذا السائق
+    if (v.rows[0].current_driver_id !== driverId) {
+      const err = new Error('هذه القاطرة غير مرتبطة بحساب السائق');
+      err.status = 403;
+      err.code = 'VEHICLE_NOT_OWNED';
       throw err;
     }
 

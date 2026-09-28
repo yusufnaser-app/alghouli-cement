@@ -47,6 +47,7 @@ class _RequestFaxScreenState extends State<RequestFaxScreen> {
       final factories = await _service.factories();
       final vehicles = await _service.vehicles();
       final profile = await _service.myProfile();
+      if (!mounted) return;
       setState(() {
         _factories = factories;
         _myVehicles = vehicles;
@@ -56,9 +57,11 @@ class _RequestFaxScreenState extends State<RequestFaxScreen> {
         }
       });
     } catch (e) {
-      setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) {
+        setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+      }
     } finally {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -165,6 +168,26 @@ class _RequestFaxScreenState extends State<RequestFaxScreen> {
                   _infoSection(),
                   const SizedBox(height: 20),
 
+                  if (_myVehicles.length > 1) ...[
+                    const Text('القاطرة *',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: _vehicleId,
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.local_shipping),
+                      ),
+                      items: _myVehicles.map((v) {
+                        return DropdownMenuItem<String>(
+                          value: v['id'] as String,
+                          child: Text((v['plate_number'] ?? '').toString()),
+                        );
+                      }).toList(),
+                      onChanged: (v) => setState(() => _vehicleId = v),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
                   // المصنع
                   const Text('المصنع *',
                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
@@ -228,9 +251,12 @@ class _RequestFaxScreenState extends State<RequestFaxScreen> {
   Widget _infoSection() {
     final name = _profile?['full_name'] ?? '—';
     final phone = _profile?['phone'] ?? '—';
-    final plate = _myVehicles.isNotEmpty
-        ? _myVehicles.first['plate_number'] ?? '—'
-        : 'لا توجد قاطرة';
+    final selected = _myVehicles.where((v) => v['id'] == _vehicleId);
+    final plate = selected.isNotEmpty
+        ? (selected.first['plate_number'] ?? '—').toString()
+        : _myVehicles.isNotEmpty
+            ? (_myVehicles.first['plate_number'] ?? '—').toString()
+            : 'لا توجد قاطرة';
 
     return Container(
       padding: const EdgeInsets.all(16),
