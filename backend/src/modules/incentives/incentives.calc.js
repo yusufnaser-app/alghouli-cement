@@ -1,11 +1,11 @@
-// حساب نقي (بلا قاعدة بيانات) — سهل الاختبار.
+// حوافز المصانع للمؤسسة على الكميات المسحوبة. حساب نقي (بلا قاعدة بيانات) — سهل الاختبار.
 // افتراض: الكميات في الفاكس بالكيس، والكيس = 50 كجم (حسب وثيقة المشروع)، والطن = 1000 كجم.
 const KG_PER_BAG = 50;
 const bagsToTons = (bags) => (bags * KG_PER_BAG) / 1000;
 
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
-// يعيد مبلغ الحافز لقاعدة واحدة على مجموع كميات سائق
+// يعيد مبلغ الحافز لقاعدة واحدة على مجموع الكميات المسحوبة من مصنع
 const calcIncentive = ({ bags }, rule) => {
   const b = Number(bags) || 0;
   const rate = Number(rule.rate_per_unit) || 0;
@@ -13,9 +13,9 @@ const calcIncentive = ({ bags }, rule) => {
   return { quantity: round2(qty), rate, amount: round2(qty * rate) };
 };
 
-// القواعد المنطبقة على سائق (نوع السائق null = الكل)
-const rulesFor = (driverType, rules) =>
-  rules.filter((r) => !r.driver_type || r.driver_type === driverType);
+// القواعد المنطبقة على مصنع (source_id فارغ = كل المصانع)
+const rulesFor = (sourceId, rules) =>
+  rules.filter((r) => !r.source_id || r.source_id === sourceId);
 
 // حدود الفترة [start, end) بالتوقيت العالمي
 const periodRange = (period, year, month) => {

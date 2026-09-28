@@ -9,7 +9,7 @@ const ruleSchema = z.object({
   period: z.enum(['monthly', 'yearly']),
   unit: z.enum(['bag', 'ton']),
   ratePerUnit: z.number().min(0),
-  driverType: z.enum(['institution_driver', 'transport_driver', 'trader_driver']).nullable().optional(),
+  sourceId: z.string().uuid().nullable().optional(),
   validFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   validTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   isActive: z.boolean().optional(),
@@ -33,10 +33,10 @@ const report = asyncHandler(async (req, res) =>
 const reportCsv = asyncHandler(async (req, res) => {
   const q = reportSchema.parse(req.query);
   const data = await service.report(q);
-  const rows = data.drivers.map((d) => ({ name: d.full_name, trips: d.trips, bags: d.total_bags, amount: d.total_incentive }));
+  const rows = data.factories.map((f) => ({ name: f.factory_name, trips: f.trips, bags: f.total_bags, tons: f.total_tons, amount: f.total_incentive }));
   return sendCsv(res, `incentives-${q.year}${q.month ? '-' + q.month : ''}.csv`, rows, [
-    { key: 'name', label: 'السائق' }, { key: 'trips', label: 'عدد الرحلات' },
-    { key: 'bags', label: 'إجمالي الأكياس' }, { key: 'amount', label: 'الحافز' },
+    { key: 'name', label: 'المصنع' }, { key: 'trips', label: 'عدد الرحلات' },
+    { key: 'bags', label: 'إجمالي الأكياس' }, { key: 'tons', label: 'إجمالي الأطنان' }, { key: 'amount', label: 'الحافز' },
   ]);
 });
 

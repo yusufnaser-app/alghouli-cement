@@ -5,18 +5,13 @@ import { downloadFile } from '../../utils/files';
 const fmt = (n) => (parseFloat(n) || 0).toLocaleString('en-US');
 const UNIT_AR = { bag: 'لكل كيس', ton: 'لكل طن' };
 const PERIOD_AR = { monthly: 'شهري', yearly: 'سنوي' };
-const TYPE_AR = {
-  institution_driver: 'سائق مؤسسة',
-  transport_driver: 'سائق مستقل',
-  trader_driver: 'سائق تاجر',
-};
-
-const emptyRule = { nameAr: '', period: 'monthly', unit: 'bag', ratePerUnit: '', driverType: '' };
+const emptyRule = { nameAr: '', period: 'monthly', unit: 'bag', ratePerUnit: '', sourceId: '' };
 
 export default function Incentives() {
   const now = new Date();
   const [tab, setTab] = useState('report');
   const [rules, setRules] = useState([]);
+  const [sources, setSources] = useState([]);
   const [report, setReport] = useState(null);
   const [q, setQ] = useState({ period: 'monthly', year: now.getFullYear(), month: now.getMonth() + 1 });
   const [loading, setLoading] = useState(false);
@@ -48,7 +43,16 @@ export default function Incentives() {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { loadRules(); }, []);
+  const loadSources = async () => {
+    try {
+      const r = await client.get('/sources');
+      setSources(r.data.data || []);
+    } catch (err) { setError(handleError(err)); }
+  };
+
+  const sourceName = (id) => (sources.find((s) => s.id === id) || {}).name_ar || '—';
+
+  useEffect(() => { loadRules(); loadSources(); }, []);
   useEffect(() => { if (tab === 'report') loadReport(); }, [tab]);
 
   const saveRule = async () => {
@@ -63,7 +67,7 @@ export default function Incentives() {
         period: form.period,
         unit: form.unit,
         ratePerUnit: rate,
-        driverType: form.driverType || null,
+        sourceId: form.sourceId || null,
       });
       setShowForm(false);
       setForm(emptyRule);
@@ -133,23 +137,23 @@ export default function Incentives() {
             <>
               {report.note && <div className="alert alert-info">{report.note}</div>}
               <div className="card mb-2">
-                <strong>إجمالي الحوافز: </strong>
+                <strong>إجمالي حوافز المصانع المستحقة للمؤسسة: </strong>
                 <span style={{ color: '#2E7D32', fontSize: 20 }}>{fmt(report.grand_total)} ريال</span>
               </div>
               <div className="table-container">
                 <table>
                   <thead>
-                    <tr><th>السائق</th><th>النوع</th><th>الرحلات</th><th>الأكياس</th><th>القواعد المطبقة</th><th>الحافز</th></tr>
+                    <tr><th>المصنع</th><th>الرحلات</th><th>الأكياس</th><th>الأطنان</th><th>القواعد المطبقة</th><th>الحافز</th></tr>
                   </thead>
                   <tbody>
-                    {report.drivers.length === 0 ? (
-                      <tr><td colSpan="6" style={{ textAlign: 'center', color: '#999' }}>لا توجد رحلات محمّلة في هذه الفترة</td></tr>
-                    ) : report.drivers.map((d) => (
-                      <tr key={d.driver_id}>
-                        <td>{d.full_name}</td>
-                        <td style={{ fontSize: 12 }}>{TYPE_AR[d.driver_type] || d.driver_type}</td>
+                    {report.factories.length === 0 ? (
+                      <tr><td colSpan="6" style={{ textAlign: 'center', color: '#999' }}>لا توجد كميات مسحوبة في هذه الفترة</td></tr>
+                    ) : report.factories.map((d) => (
+                      <tr key={d.source_id}>
+                        <td>{d.factory_name}</td>
                         <td>{d.trips}</td>
                         <td>{fmt(d.total_bags)}</td>
+                        <td>{fmt(d.total_tons)}</td>
                         <td style={{ fontSize: 12 }}>
                           {d.applied_rules.length === 0 ? '—' : d.applied_rules.map((a) => (
                             <div key={a.rule_id}>{a.rule_name}: {fmt(a.quantity)} × {fmt(a.rate)}</div>
@@ -174,7 +178,7 @@ export default function Incentives() {
           <div className="table-container">
             <table>
               <thead>
-                <tr><th>الاسم</th><th>الفترة</th><th>الوحدة</th><th>السعر</th><th>نوع السائق</th><th>الحالة</th><th></th></tr>
+                <tr><th>الاسم</th><th>الفترة</th><th>الوحدة</th><th>السعر</th><th>المصنع</th><th>الحالة</th><th></th></tr>
               </thead>
               <tbody>
                 {rules.length === 0 ? (
@@ -185,7 +189,7 @@ export default function Incentives() {
                     <td>{PERIOD_AR[r.period]}</td>
                     <td>{UNIT_AR[r.unit]}</td>
                     <td>{fmt(r.rate_per_unit)}</td>
-                    <td style={{ fontSize: 12 }}>{r.driver_type ? TYPE_AR[r.driver_type] : 'كل السائقين'}</td>
+                    <td style={{ fontSize: 12 }}>{r.source_id ? sourceName(r.source_id) : 'كل المصانع'}</td>
                     <td>{r.is_active ? '✅ فعّالة' : '⏸ معطّلة'}</td>
                     <td>
                       <button className="btn btn-secondary btn-sm" onClick={() => toggleRule(r)}>
@@ -211,7 +215,7 @@ export default function Incentives() {
               {error && <div className="alert alert-error">{error}</div>}
               <div className="form-group">
                 <label className="form-label">اسم القاعدة *</label>
-                <input className="form-input" value={form.nameAr} onChange={(e) => setForm({ ...form, nameAr: e.target.value })} placeholder="مثال: حافز شهري لكل كيس" />
+                <input className="form-input" value={form.nameAr} onChange={(e) => setForm({ ...form, nameAr: e.target.value })} placeholder="مثال: حافز مصنع عمران الشهري" />
               </div>
               <div className="grid-2">
                 <div className="form-group">
@@ -234,10 +238,10 @@ export default function Incentives() {
                 <input type="number" className="form-input" value={form.ratePerUnit} onChange={(e) => setForm({ ...form, ratePerUnit: e.target.value })} />
               </div>
               <div className="form-group">
-                <label className="form-label">ينطبق على</label>
-                <select className="form-select" value={form.driverType} onChange={(e) => setForm({ ...form, driverType: e.target.value })}>
-                  <option value="">كل السائقين</option>
-                  {Object.entries(TYPE_AR).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                <label className="form-label">المصنع</label>
+                <select className="form-select" value={form.sourceId} onChange={(e) => setForm({ ...form, sourceId: e.target.value })}>
+                  <option value="">كل المصانع</option>
+                  {sources.map((s) => <option key={s.id} value={s.id}>{s.name_ar}</option>)}
                 </select>
               </div>
             </div>

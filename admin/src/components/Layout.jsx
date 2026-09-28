@@ -18,12 +18,12 @@ const menuItems = [
   { section: 'الإدارة', items: [
     { path: '/products', label: 'المنتجات', icon: '📋', roles: ['admin', 'inventory'] },
     { path: '/sources', label: 'المصانع', icon: '🏭', roles: ['admin'] },
+    { path: '/incentives', label: 'حوافز المصانع', icon: '🎁', roles: ['admin', 'accountant'] },
     { path: '/categories', label: 'الأنواع', icon: '🎨', roles: ['admin'] },
     { path: '/traders', label: 'الموزعون', icon: '👥', roles: ['sales', 'accountant', 'admin'] },
     { path: '/drivers', label: 'السائقون', icon: '🧑‍✈️', roles: ['transport', 'admin'] },
     { path: '/pending-drivers', label: 'طلبات السائقين', icon: '👤', roles: ['admin'], badge: 'drivers' },
     { path: '/driver-finances', label: 'حسابات السائقين', icon: '💰', roles: ['admin', 'accountant'] },
-    { path: '/incentives', label: 'الحوافز', icon: '🎁', roles: ['admin', 'accountant', 'transport'] },
     { path: '/vehicles', label: 'الشاحنات', icon: '🚛', roles: ['transport', 'admin'] },
   ]},
   { section: 'التحليلات', items: [

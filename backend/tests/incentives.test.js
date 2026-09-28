@@ -25,10 +25,11 @@ test('التقريب إلى خانتين عشريتين', () => {
   assert.strictEqual(calcIncentive({ bags: 3 }, { unit: 'bag', rate_per_unit: 0.335 }).amount, 1.01);
 });
 
-test('القاعدة بدون نوع سائق تنطبق على الجميع، والمحددة على نوعها فقط', () => {
-  const rules = [{ id: 1, driver_type: null }, { id: 2, driver_type: 'institution_driver' }, { id: 3, driver_type: 'trader_driver' }];
-  assert.deepStrictEqual(rulesFor('institution_driver', rules).map((r) => r.id), [1, 2]);
-  assert.deepStrictEqual(rulesFor('trader_driver', rules).map((r) => r.id), [1, 3]);
+test('القاعدة بدون مصنع تنطبق على كل المصانع، والمحددة على مصنعها فقط', () => {
+  const rules = [{ id: 1, source_id: null }, { id: 2, source_id: 'AMR' }, { id: 3, source_id: 'BAJ' }];
+  assert.deepStrictEqual(rulesFor('AMR', rules).map((r) => r.id), [1, 2]);
+  assert.deepStrictEqual(rulesFor('BAJ', rules).map((r) => r.id), [1, 3]);
+  assert.deepStrictEqual(rulesFor('WAT', rules).map((r) => r.id), [1]);
 });
 
 test('حدود الفترة: شهري وسنوي (ديسمبر ينتهي في يناير التالي)', () => {
