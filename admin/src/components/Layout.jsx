@@ -23,6 +23,7 @@ const menuItems = [
     { path: '/drivers', label: 'السائقون', icon: '🧑‍✈️', roles: ['transport', 'admin'] },
     { path: '/pending-drivers', label: 'طلبات السائقين', icon: '👤', roles: ['admin'], badge: 'drivers' },
     { path: '/driver-finances', label: 'حسابات السائقين', icon: '💰', roles: ['admin', 'accountant'] },
+    { path: '/incentives', label: 'الحوافز', icon: '🎁', roles: ['admin', 'accountant', 'transport'] },
     { path: '/vehicles', label: 'الشاحنات', icon: '🚛', roles: ['transport', 'admin'] },
   ]},
   { section: 'التحليلات', items: [
