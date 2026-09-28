@@ -535,6 +535,82 @@ const listPendingRouteAndPrice = async () => {
   return r.rows;
 };
 
+/**
+ * مركز العمليات — أهم شاشة تشغيلية (حسب مواصفة العمل الجديدة، بند 16):
+ *   - يحتاج تدخل: قاطرة داخل مصنع منذ وقت طويل دون تسجيل تحميل (رحلة متأخرة)
+ *   - يحتاج متابعة: فاكسات لم تُقيَّد بعد (بانتظار الاعتماد/الإصدار)، أو
+ *     صادرة/مُحمَّلة لكن بلا خط سير أو أجرة نقل بعد
+ *   - طبيعي: رحلات جارية بشكل طبيعي (تم تحديد خط السير والأجرة، في الطريق)
+ */
+const getOperationsCenter = async (delayThresholdMinutes = 60) => {
+  const commonSelect = `
+    SELECT f.*, d.full_name AS driver_name, d.phone AS driver_phone,
+           v.plate_number, s.name_ar AS factory_name
+    FROM loading_faxes f
+    LEFT JOIN drivers d ON d.id = f.driver_id
+    LEFT JOIN vehicles v ON v.id = f.vehicle_id
+    LEFT JOIN product_sources s ON s.id = f.factory_id
+  `;
+
+  // 1) يحتاج تدخل — عالق داخل المصنع أطول من الحد المسموح دون تسجيل تحميل
+  const urgent = await query(
+    `${commonSelect}
+     WHERE f.factory_entered_at IS NOT NULL
+       AND f.used_at IS NULL
+       AND f.status NOT IN ('CANCELLED')
+       AND f.factory_entered_at < NOW() - ($1::int * INTERVAL '1 minute')
+     ORDER BY f.factory_entered_at ASC`,
+    [delayThresholdMinutes]
+  );
+  const urgentRows = urgent.rows.map((row) => ({
+    ...row,
+    alert_reason: 'STUCK_IN_FACTORY',
+    minutes_elapsed: Math.floor(
+      (Date.now() - new Date(row.factory_entered_at).getTime()) / 60000
+    ),
+  }));
+
+  // 2) يحتاج متابعة — لم تُقيَّد بعد (بانتظار الاعتماد أو الإصدار)
+  const awaitingIssue = await query(
+    `${commonSelect}
+     WHERE f.status IN ('REQUESTED', 'APPROVED')
+     ORDER BY f.requested_at ASC`
+  );
+
+  // 3) يحتاج متابعة أيضًا — صادرة/محمَّلة لكن بلا خط سير أو أجرة بعد
+  const awaitingRoute = await query(
+    `${commonSelect}
+     WHERE f.status IN ('ISSUED', 'USED')
+       AND (f.route IS NULL OR f.transport_rate IS NULL)
+     ORDER BY COALESCE(f.used_at, f.issued_at) ASC`
+  );
+
+  const needsFollowUp = [
+    ...awaitingIssue.rows.map((row) => ({ ...row, follow_up_reason: 'AWAITING_ISSUE' })),
+    ...awaitingRoute.rows.map((row) => ({ ...row, follow_up_reason: 'AWAITING_ROUTE' })),
+  ];
+
+  // 4) طبيعي — رحلات جارية بلا مشاكل (خط السير والأجرة محدَّدان، في الطريق)
+  const normal = await query(
+    `${commonSelect}
+     WHERE f.status = 'READY_FOR_TRANSIT'
+     ORDER BY f.route_set_at DESC
+     LIMIT 100`
+  );
+
+  return {
+    urgent: urgentRows,
+    needs_follow_up: needsFollowUp,
+    normal: normal.rows,
+    summary: {
+      urgent_count: urgentRows.length,
+      needs_follow_up_count: needsFollowUp.length,
+      normal_count: normal.rows.length,
+      delay_threshold_minutes: delayThresholdMinutes,
+    },
+  };
+};
+
 module.exports.enterFactory = enterFactory;
 module.exports.recordLoading = recordLoading;
 module.exports.listPendingFaxes = listPendingFaxes;
@@ -543,6 +619,7 @@ module.exports.listTraderFaxes = listTraderFaxes;
 module.exports.getFaxById = getFaxById;
 module.exports.cancelFax = cancelFax;
 module.exports.listPendingRouteAndPrice = listPendingRouteAndPrice;
+module.exports.getOperationsCenter = getOperationsCenter;
 
 
 
@@ -933,3 +1010,27 @@ const setRouteAndTransport = async (faxId, data, userId) => {
 
 module.exports.listAwaitingRoute = listAwaitingRoute;
 module.exports.setRouteAndTransport = setRouteAndTransport;
+
+const listFaxesForExport = async ({ status, from, to } = {}) => {
+  const params = [];
+  const where = [];
+  if (status) { params.push(status); where.push(`f.status = $${params.length}`); }
+  if (from) { params.push(from); where.push(`f.requested_at >= $${params.length}::date`); }
+  if (to) { params.push(to); where.push(`f.requested_at < ($${params.length}::date + INTERVAL '1 day')`); }
+  const r = await query(
+    `SELECT f.fax_number, f.status, f.requested_at, f.issued_at, f.used_at,
+            d.full_name AS driver_name, v.plate_number, s.name_ar AS factory_name,
+            f.requested_quantity, f.loaded_quantity, f.quantity_discrepancy,
+            f.route, f.transport_rate, f.transport_total, f.transport_payer
+     FROM loading_faxes f
+     LEFT JOIN drivers d ON d.id = f.driver_id
+     LEFT JOIN vehicles v ON v.id = f.vehicle_id
+     LEFT JOIN product_sources s ON s.id = f.factory_id
+     ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+     ORDER BY f.requested_at DESC
+     LIMIT 5000`,
+    params
+  );
+  return r.rows;
+};
+module.exports.listFaxesForExport = listFaxesForExport;

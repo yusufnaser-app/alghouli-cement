@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import client, { handleError } from '../../api/client';
+import { openPrintable } from '../../utils/files';
 
 const statusAr = {
   PENDING_PAYMENT: 'بانتظار الدفع',
@@ -62,6 +63,15 @@ export default function Orders() {
     : orders;
 
   if (loading) return <div className="loading"><div className="spinner"></div></div>;
+
+  const printInvoice = async (orderId) => {
+    try {
+      const g = await client.post(`/invoices/order/${orderId}/generate`);
+      await openPrintable(`/invoices/${g.data.data.id}/print`);
+    } catch (err) {
+      alert(err.message && !err.response ? err.message : handleError(err));
+    }
+  };
 
   return (
     <div>
@@ -196,6 +206,7 @@ export default function Orders() {
               )}
             </div>
             <div className="modal-footer">
+              <button className="btn btn-primary" onClick={() => printInvoice(selected.id)}>🖨 فاتورة / PDF</button>
               <button className="btn btn-secondary" onClick={() => { setSelected(null); setDetails(null); }}>إغلاق</button>
             </div>
           </div>

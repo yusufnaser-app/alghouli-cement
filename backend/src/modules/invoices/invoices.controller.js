@@ -1,6 +1,7 @@
 const asyncHandler = require('../../utils/asyncHandler');
 const response = require('../../utils/response');
 const service = require('./invoices.service');
+const { renderInvoiceHtml } = require('./invoice-print');
 
 const list = asyncHandler(async (req, res) => {
   const invoices = await service.getMyInvoices(req.user.id);
@@ -14,9 +15,17 @@ const getById = asyncHandler(async (req, res) => {
   return response.success(res, invoice);
 });
 
+const printHtml = asyncHandler(async (req, res) => {
+  const isAdmin = req.roles.includes('admin') || req.roles.includes('accountant');
+  const invoice = await service.getInvoiceById(req.params.id, req.user.id, isAdmin);
+  if (!invoice) return response.error(res, 'الفاتورة غير موجودة', 404, 'NOT_FOUND');
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  return res.send(renderInvoiceHtml(invoice));
+});
+
 const generateForOrder = asyncHandler(async (req, res) => {
   const invoice = await service.generateInvoiceForOrder(req.params.orderId);
   return response.created(res, invoice, 'تم إنشاء الفاتورة');
 });
 
-module.exports = { list, getById, generateForOrder };
+module.exports = { list, getById, printHtml, generateForOrder };

@@ -68,6 +68,42 @@ const pendingRoutePrice = asyncHandler(async (req, res) => {
   return response.success(res, await service.listPendingRouteAndPrice());
 });
 
+const { sendCsv } = require('../../utils/csv');
+
+const STATUS_AR = { REQUESTED: 'بانتظار الاعتماد', APPROVED: 'معتمد', ISSUED: 'صادر', USED: 'استُخدم',
+  READY_FOR_TRANSIT: 'في الطريق', CANCELLED: 'ملغي' };
+
+const exportCsv = asyncHandler(async (req, res) => {
+  const rows = await service.listFaxesForExport({
+    status: req.query.status, from: req.query.from, to: req.query.to,
+  });
+  const columns = [
+    { key: 'fax_number', label: 'رقم الفاكس' },
+    { key: 'status', label: 'الحالة', format: (v) => STATUS_AR[v] || v },
+    { key: 'driver_name', label: 'السائق' },
+    { key: 'plate_number', label: 'القاطرة' },
+    { key: 'factory_name', label: 'المصنع' },
+    { key: 'requested_quantity', label: 'الكمية المطلوبة' },
+    { key: 'loaded_quantity', label: 'الكمية المحملة' },
+    { key: 'quantity_discrepancy', label: 'الفرق' },
+    { key: 'route', label: 'خط السير' },
+    { key: 'transport_rate', label: 'سعر النقل' },
+    { key: 'transport_total', label: 'إجمالي النقل' },
+    { key: 'transport_payer', label: 'من يتحمل', format: (v) => (v === 'trader' ? 'التاجر' : 'المؤسسة') },
+    { key: 'requested_at', label: 'وقت الطلب' },
+    { key: 'issued_at', label: 'وقت الإصدار' },
+    { key: 'used_at', label: 'وقت التحميل' },
+  ];
+  return sendCsv(res, `faxes-${new Date().toISOString().slice(0, 10)}.csv`, rows, columns);
+});
+
+const operationsCenter = asyncHandler(async (req, res) => {
+  let threshold = parseInt(req.query.delayMinutes, 10);
+  if (!Number.isFinite(threshold) || threshold < 1 || threshold > 10080) threshold = 60;
+  const data = await service.getOperationsCenter(threshold);
+  return response.success(res, data, 'مركز العمليات');
+});
+
 const approve = asyncHandler(async (req, res) => {
   const r = await service.approveFax(req.params.id, req.user.id);
   return response.success(res, r, 'تم اعتماد الفاكس');
@@ -136,6 +172,6 @@ const setRouteTransport = asyncHandler(async (req, res) => {
 
 module.exports = {
   request, staffRequest, myFaxes, enterFactory, currentTrip, confirmLoading, awaitingRoute, setRouteTransport,
-  pending, pendingRoutePrice, approve, issue, issueAndNotify,
+  pending, pendingRoutePrice, operationsCenter, exportCsv, approve, issue, issueAndNotify,
   recordLoading, cancel, getById,
 };

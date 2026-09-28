@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import client, { handleError } from '../../api/client';
+import { downloadFile } from '../../utils/files';
 
 const STATUS_AR = {
   REQUESTED: 'بانتظار الاعتماد',
@@ -18,9 +19,10 @@ const STATUS_COLOR = {
 };
 
 export default function Operations() {
-  const [tab, setTab] = useState('pending');
+  const [tab, setTab] = useState('alerts');
   const [pending, setPending] = useState([]);
   const [routePrice, setRoutePrice] = useState([]);
+  const [alerts, setAlerts] = useState({ urgent: [], needs_follow_up: [], normal: [], summary: {} });
   const [traders, setTraders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -35,7 +37,10 @@ export default function Operations() {
     setLoading(true);
     setError('');
     try {
-      if (tab === 'pending') {
+      if (tab === 'alerts') {
+        const r = await client.get('/faxes/operations-center');
+        setAlerts(r.data.data || { urgent: [], needs_follow_up: [], normal: [], summary: {} });
+      } else if (tab === 'pending') {
         const r = await client.get('/faxes/pending');
         setPending(r.data.data || []);
       } else if (tab === 'route-price') {
@@ -69,13 +74,19 @@ export default function Operations() {
 
   const fmt = (n) => (parseFloat(n) || 0).toLocaleString('en-US');
 
-  const currentList = tab === 'pending' ? pending : routePrice;
+  const currentList = tab === 'pending' ? pending : tab === 'route-price' ? routePrice : [];
 
   return (
     <div>
       {/* الأزرار العلوية */}
       <div className="card mb-2">
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            className={`btn ${tab === 'alerts' ? 'btn-danger' : 'btn-secondary'}`}
+            onClick={() => setTab('alerts')}
+          >
+            🔴 يحتاج تدخل {alerts.summary?.urgent_count > 0 ? `(${alerts.summary.urgent_count})` : ''}
+          </button>
           <button
             className={`btn ${tab === 'pending' ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setTab('pending')}
@@ -92,6 +103,12 @@ export default function Operations() {
           <button className="btn btn-success" onClick={() => setShowCreate(true)}>
             ➕ إنشاء فاكس مباشر
           </button>
+          <button
+            className="btn btn-secondary"
+            onClick={() => downloadFile('/faxes/export', `faxes-${new Date().toISOString().slice(0, 10)}.csv`).catch((e) => alert(handleError(e)))}
+          >
+            📥 تصدير Excel
+          </button>
           <button className="btn btn-secondary" onClick={load}>🔄 تحديث</button>
         </div>
       </div>
@@ -100,6 +117,12 @@ export default function Operations() {
 
       {loading ? (
         <div className="loading"><div className="spinner"></div></div>
+      ) : tab === 'alerts' ? (
+        <OperationsAlertsView
+          alerts={alerts}
+          fmt={fmt}
+          onOpen={openDetails}
+        />
       ) : currentList.length === 0 ? (
         <div className="card">
           <div className="empty-state">
@@ -229,7 +252,7 @@ export default function Operations() {
                   📄 إصدار + إشعار SMS
                 </button>
               )}
-              {selected.status === 'ISSUED' && (!selected.route || !selected.transport_rate) && (
+              {(selected.status === 'ISSUED' || selected.status === 'USED') && (!selected.route || !selected.transport_rate) && (
                 <button className="btn btn-warning" onClick={() => setShowRouteModal(true)}>
                   🗺️ تحديد خط السير والأجرة
                 </button>
@@ -265,6 +288,101 @@ export default function Operations() {
           onCreated={() => { setShowCreate(false); load(); }}
         />
       )}
+    </div>
+  );
+}
+
+// === مركز العمليات: يحتاج تدخل / يحتاج متابعة / طبيعي ===
+function OperationsAlertsView({ alerts, fmt, onOpen }) {
+  const urgent = alerts.urgent || [];
+  const followUp = alerts.needs_follow_up || [];
+  const normal = alerts.normal || [];
+
+  const followUpLabel = (reason) =>
+    reason === 'AWAITING_ISSUE' ? 'بانتظار الاعتماد/الإصدار' : 'بانتظار خط السير أو الأجرة';
+
+  return (
+    <div>
+      {/* يحتاج تدخل — الأهم */}
+      <div className="card mb-2" style={{ borderRight: '4px solid #DC3545' }}>
+        <h3 style={{ color: '#DC3545', marginBottom: 12 }}>
+          🔴 يحتاج تدخل — رحلات متأخرة ({urgent.length})
+        </h3>
+        {urgent.length === 0 ? (
+          <p style={{ color: '#666', fontSize: 13 }}>لا توجد رحلات متأخرة حاليًا. 👍</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {urgent.map((f) => (
+              <div
+                key={f.id}
+                onClick={() => onOpen(f)}
+                style={{
+                  padding: 12, background: '#FFF5F5', border: '1px solid #FFCDD2',
+                  borderRadius: 8, cursor: 'pointer',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8,
+                }}
+              >
+                <div>
+                  <strong>{f.plate_number || '—'}</strong> — {f.driver_name || '—'}
+                  <div style={{ fontSize: 12, color: '#666' }}>
+                    داخل مصنع {f.factory_name || '—'} منذ {f.minutes_elapsed} دقيقة دون تسجيل تحميل
+                  </div>
+                </div>
+                <span className="badge badge-cancelled">{f.minutes_elapsed} د</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* يحتاج متابعة */}
+      <div className="card mb-2" style={{ borderRight: '4px solid #FFC107' }}>
+        <h3 style={{ color: '#F57F17', marginBottom: 12 }}>
+          🟡 يحتاج متابعة — فاكسات لم تُقيَّد/تُسعَّر بعد ({followUp.length})
+        </h3>
+        {followUp.length === 0 ? (
+          <p style={{ color: '#666', fontSize: 13 }}>لا يوجد شيء بانتظار المتابعة حاليًا. 👍</p>
+        ) : (
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>السائق</th>
+                  <th>القاطرة</th>
+                  <th>المصنع</th>
+                  <th>الكمية</th>
+                  <th>السبب</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {followUp.map((f) => (
+                  <tr key={f.id}>
+                    <td>{f.driver_name || '—'}</td>
+                    <td>{f.plate_number || '—'}</td>
+                    <td>{f.factory_name || '—'}</td>
+                    <td>{fmt(f.requested_quantity)} كيس</td>
+                    <td style={{ fontSize: 12 }}>{followUpLabel(f.follow_up_reason)}</td>
+                    <td>
+                      <button className="btn btn-secondary btn-sm" onClick={() => onOpen(f)}>👁 فتح</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* طبيعي */}
+      <div className="card" style={{ borderRight: '4px solid #28A745' }}>
+        <h3 style={{ color: '#2E7D32', marginBottom: 4 }}>
+          🟢 طبيعي — رحلات في الطريق ({normal.length})
+        </h3>
+        <p style={{ color: '#666', fontSize: 12 }}>
+          خط السير والأجرة محدَّدان لهذه الرحلات ولا تحتاج أي تدخل حاليًا.
+        </p>
+      </div>
     </div>
   );
 }

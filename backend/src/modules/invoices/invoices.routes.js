@@ -7,6 +7,7 @@ const router = express.Router();
 router.use(authenticate);
 
 router.get('/', controller.list);
+router.get('/:id/print', controller.printHtml);
 router.get('/:id', controller.getById);
 router.post('/order/:orderId/generate', requireRoles('accountant'), controller.generateForOrder);
 

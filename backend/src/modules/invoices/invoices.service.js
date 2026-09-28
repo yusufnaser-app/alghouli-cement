@@ -105,7 +105,7 @@ const getInvoiceById = async (invoiceId, userId = null, isAdmin = false) => {
     JOIN orders o ON o.id = i.order_id
     JOIN customers c ON c.id = i.customer_id
     JOIN users u ON u.id = c.user_id
-    JOIN customer_addresses a ON a.id = o.address_id
+    LEFT JOIN customer_addresses a ON a.id = o.address_id
     WHERE i.id = $1
   `;
   const params = [invoiceId];
