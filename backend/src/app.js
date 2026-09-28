@@ -29,6 +29,7 @@ const adminRoutes = require('./modules/admin/admin.routes');
 const faxRoutes = require('./modules/faxes/fax.routes');
 const bulkFaxRoutes = require('./modules/faxes/bulk-fax.routes');
 const traderManagementRoutes = require('./modules/traders/driver-management.routes');
+const accountingRoutes = require('./modules/accounting/accounting.routes');
 const errorHandler = require('./middlewares/errorHandler');
 const response = require('./utils/response');
 
@@ -70,6 +71,7 @@ api.use('/admin', adminRoutes);
 api.use('/faxes', faxRoutes);
 api.use('/bulk-faxes', bulkFaxRoutes);
 api.use('/traders/me', traderManagementRoutes);
+api.use('/accounting', accountingRoutes);
 
 app.use('/api/v1', api);
 app.use((req, res) => response.error(res, 'المسار غير موجود', 404, 'NOT_FOUND'));
