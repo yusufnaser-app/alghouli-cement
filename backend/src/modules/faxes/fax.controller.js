@@ -133,9 +133,21 @@ const cancel = asyncHandler(async (req, res) => {
   return response.success(res, r, 'تم إلغاء الفاكس');
 });
 
+const STAFF_ROLES = ['admin', 'transport', 'sales', 'accountant'];
+
+// الموظفون يرون كل الفاكسات؛ السائق فاكساته فقط؛ التاجر فاكسات سائقيه أو التي تحمّل أجرتها.
+// أي شخص آخر يتلقى 404 (لا نكشف وجود الفاكس أصلًا).
 const getById = asyncHandler(async (req, res) => {
   const fax = await service.getFaxById(req.params.id);
   if (!fax) return response.error(res, 'غير موجود', 404);
+  const isStaff = (req.roles || []).some((r) => STAFF_ROLES.includes(r));
+  const uid = req.user.id;
+  const allowed =
+    isStaff ||
+    fax.driver_user_id === uid ||
+    fax.trader_user_id === uid ||
+    fax.payer_trader_user_id === uid;
+  if (!allowed) return response.error(res, 'غير موجود', 404);
   return response.success(res, fax);
 });
 

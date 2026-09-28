@@ -260,6 +260,7 @@ class _FaxDetailsScreenState extends State<FaxDetailsScreen> {
       'APPROVED': 'معتمد',
       'ISSUED': 'صادر — توجه للمصنع',
       'USED': 'تم التحميل — بانتظار خط السير',
+      'READY_FOR_TRANSIT': 'في الطريق — تم تحديد خط السير',
       'CANCELLED': 'ملغي',
     }[s] ?? s;
   }
@@ -269,6 +270,7 @@ class _FaxDetailsScreenState extends State<FaxDetailsScreen> {
     if (s == 'APPROVED') return AppColors.info;
     if (s == 'ISSUED') return AppColors.accent;
     if (s == 'USED') return AppColors.success;
+    if (s == 'READY_FOR_TRANSIT') return AppColors.primary;
     return AppColors.textSecondary;
   }
 
@@ -320,7 +322,9 @@ class _FaxDetailsScreenState extends State<FaxDetailsScreen> {
             child: Column(
               children: [
                 Icon(
-                  status == 'USED'
+                  status == 'READY_FOR_TRANSIT'
+                      ? Icons.local_shipping
+                      : status == 'USED'
                       ? Icons.done_all
                       : status == 'ISSUED'
                           ? Icons.description
@@ -367,7 +371,32 @@ class _FaxDetailsScreenState extends State<FaxDetailsScreen> {
                   '${_fmt(f['transport_total'])} ر.ي',
                   color: AppColors.success),
           ]),
+          if (f['route'] != null) _payerSection(f),
           const SizedBox(height: 20),
+          if (status == 'READY_FOR_TRANSIT')
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+              ),
+              child: const Column(
+                children: [
+                  Icon(Icons.local_shipping, color: AppColors.primary, size: 50),
+                  SizedBox(height: 12),
+                  Text('تم تحديد خط السير',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.primary)),
+                  SizedBox(height: 4),
+                  Text('توجه إلى وجهتك حسب خط السير الموضح أعلاه',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                ],
+              ),
+            ),
           if (status == 'ISSUED' && f['factory_entered_at'] == null)
             _bigButton('وصلت للمصنع', Icons.login, AppColors.info,
                 _updating ? null : _enterFactory),
@@ -403,6 +432,38 @@ class _FaxDetailsScreenState extends State<FaxDetailsScreen> {
         ],
       ),
     );
+  }
+
+  // من يتحمل أجرة النقل: المؤسسة أم تاجر (مع بياناته وعنوانه ليتواصل معه السائق)
+  Widget _payerSection(Map<String, dynamic> f) {
+    final onTrader =
+        f['transport_payer'] == 'trader' && f['payer_trader_name'] != null;
+    if (!onTrader) {
+      return _section('أجرة النقل', [
+        _row(Icons.account_balance, 'مستحقك على', 'المؤسسة'),
+      ]);
+    }
+    final addr = [
+      f['payer_governorate'],
+      f['payer_area'],
+      f['payer_address_text'],
+    ].where((e) => e != null && e.toString().trim().isNotEmpty).join(' — ');
+    return _section('أجرة النقل — مقيّدة على التاجر', [
+      _row(Icons.person, 'التاجر', f['payer_trader_name'].toString()),
+      _row(Icons.phone, 'هاتف التاجر', (f['payer_trader_phone'] ?? '—').toString()),
+      _row(Icons.location_on, 'عنوان التاجر', addr.isEmpty ? 'غير مسجَّل' : addr),
+      if (f['transport_total'] != null)
+        _row(Icons.payments, 'المبلغ المقيّد عليه',
+            '${_fmt(f['transport_total'])} ر.ي',
+            color: AppColors.warning),
+      const Padding(
+        padding: EdgeInsets.only(top: 8),
+        child: Text(
+          'هذه الأجرة لن تُقيَّد على المؤسسة؛ تواصل مع التاجر لاستلام مستحقاتك.',
+          style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+        ),
+      ),
+    ]);
   }
 
   Widget _section(String title, List<Widget> children) {

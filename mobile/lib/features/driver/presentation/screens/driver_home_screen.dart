@@ -390,6 +390,7 @@ class _DashboardTabState extends State<_DashboardTab> {
       'APPROVED': 'معتمد',
       'ISSUED': 'تم إصدار الفاكس — توجه للمصنع',
       'USED': 'تم التحميل',
+      'READY_FOR_TRANSIT': 'في الطريق — تم تحديد خط السير',
     }[status] ?? status;
 
     return Container(

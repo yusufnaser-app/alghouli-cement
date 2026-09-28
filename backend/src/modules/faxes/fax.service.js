@@ -494,12 +494,23 @@ const listTraderFaxes = async (traderUserId) => {
 
 const getFaxById = async (faxId) => {
   const r = await query(
-    `SELECT f.*, d.full_name AS driver_name, d.phone AS driver_phone,
-            v.plate_number, s.name_ar AS factory_name
+    `SELECT f.*, d.full_name AS driver_name, d.phone AS driver_phone, d.user_id AS driver_user_id,
+            v.plate_number, s.name_ar AS factory_name,
+            tc.user_id AS trader_user_id,
+            pu.full_name AS payer_trader_name, pu.phone AS payer_trader_phone,
+            pc.user_id AS payer_trader_user_id,
+            pa.governorate AS payer_governorate, pa.area AS payer_area, pa.address_text AS payer_address_text
      FROM loading_faxes f
      LEFT JOIN drivers d ON d.id = f.driver_id
      LEFT JOIN vehicles v ON v.id = f.vehicle_id
      LEFT JOIN product_sources s ON s.id = f.factory_id
+     LEFT JOIN customers tc ON tc.id = f.trader_id
+     LEFT JOIN customers pc ON pc.id = f.transport_payer_trader_id
+     LEFT JOIN users pu ON pu.id = pc.user_id
+     LEFT JOIN LATERAL (
+       SELECT governorate, area, address_text FROM customer_addresses
+       WHERE customer_id = pc.id ORDER BY is_default DESC, created_at DESC LIMIT 1
+     ) pa ON true
      WHERE f.id = $1`,
     [faxId]
   );
@@ -632,7 +643,7 @@ const getCurrentTrip = async (driverUserId) => {
      LEFT JOIN vehicles v ON v.id = f.vehicle_id
      LEFT JOIN drivers d ON d.id = f.driver_id
      WHERE f.driver_id = (SELECT id FROM drivers WHERE user_id = $1)
-       AND f.status IN ('REQUESTED','APPROVED','ISSUED','USED')
+       AND f.status IN ('REQUESTED','APPROVED','ISSUED','USED','READY_FOR_TRANSIT')
      ORDER BY f.requested_at DESC LIMIT 1`,
     [driverUserId]
   );

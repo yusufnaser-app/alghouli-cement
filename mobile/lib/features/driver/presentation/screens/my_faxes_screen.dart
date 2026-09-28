@@ -36,11 +36,14 @@ class _MyFaxesScreenState extends State<MyFaxesScreen> {
     if (_filter == 'active') {
       return _items
           .where((f) =>
-              ['REQUESTED', 'APPROVED', 'ISSUED', 'USED'].contains(f['status']))
+              ['REQUESTED', 'APPROVED', 'ISSUED', 'USED', 'READY_FOR_TRANSIT']
+                  .contains(f['status']))
           .toList();
     }
     if (_filter == 'done') {
-      return _items.where((f) => f['status'] == 'USED').toList();
+      return _items
+          .where((f) => f['status'] == 'USED' || f['status'] == 'READY_FOR_TRANSIT')
+          .toList();
     }
     return _items;
   }
@@ -61,6 +64,7 @@ class _MyFaxesScreenState extends State<MyFaxesScreen> {
       'APPROVED': 'معتمد',
       'ISSUED': 'صادر — توجه للمصنع',
       'USED': 'تم التحميل',
+      'READY_FOR_TRANSIT': 'في الطريق',
       'CANCELLED': 'ملغي',
       'EXPIRED': 'منتهي',
     }[s] ?? s;
@@ -71,6 +75,7 @@ class _MyFaxesScreenState extends State<MyFaxesScreen> {
     if (s == 'APPROVED') return AppColors.info;
     if (s == 'ISSUED') return AppColors.accent;
     if (s == 'USED') return AppColors.success;
+    if (s == 'READY_FOR_TRANSIT') return AppColors.primary;
     if (s == 'CANCELLED') return AppColors.textSecondary;
     return AppColors.textSecondary;
   }
@@ -80,6 +85,7 @@ class _MyFaxesScreenState extends State<MyFaxesScreen> {
     if (s == 'APPROVED') return Icons.check_circle_outline;
     if (s == 'ISSUED') return Icons.description;
     if (s == 'USED') return Icons.done_all;
+    if (s == 'READY_FOR_TRANSIT') return Icons.local_shipping;
     if (s == 'CANCELLED') return Icons.cancel;
     return Icons.help_outline;
   }
@@ -95,10 +101,14 @@ class _MyFaxesScreenState extends State<MyFaxesScreen> {
   // الخطوات لحساب المرحلة الحالية
   int _currentStep(String status) {
     switch (status) {
-      case 'REQUESTED': return 0;
-      case 'APPROVED': return 1;
-      case 'ISSUED': return 2;
-      case 'USED': return 3;
+      case 'REQUESTED':
+      case 'APPROVED':
+      case 'ISSUED':
+        return 0;
+      case 'USED':
+        return 1;
+      case 'READY_FOR_TRANSIT':
+        return 2;
       default: return -1;
     }
   }
