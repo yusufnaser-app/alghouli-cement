@@ -3,6 +3,8 @@ import client, { handleError } from '../../api/client';
 import { openPrintable } from '../../utils/files';
 
 const statusAr = {
+  PENDING_PRICING: 'بانتظار التسعير',
+  PENDING_PAYMENT_METHOD: 'بانتظار اختيار طريقة السداد',
   PENDING_PAYMENT: 'بانتظار الدفع',
   RECEIPT_UPLOADED: 'تم رفع الإيصال',
   PENDING_PAYMENT_REVIEW: 'بانتظار مراجعة الدفع',
@@ -18,7 +20,7 @@ const statusAr = {
 };
 
 const statusColor = (s) => {
-  if (['PENDING_PAYMENT', 'PENDING_PAYMENT_REVIEW', 'RECEIPT_UPLOADED'].includes(s)) return 'badge-pending';
+  if (['PENDING_PRICING', 'PENDING_PAYMENT_METHOD', 'PENDING_PAYMENT', 'PENDING_PAYMENT_REVIEW', 'RECEIPT_UPLOADED'].includes(s)) return 'badge-pending';
   if (['PAYMENT_APPROVED', 'PREPARING', 'DRIVER_ASSIGNED', 'LOADED'].includes(s)) return 'badge-approved';
   if (s === 'IN_TRANSIT') return 'badge-transit';
   if (['DELIVERED', 'COMPLETED'].includes(s)) return 'badge-completed';
@@ -33,6 +35,7 @@ export default function Orders() {
   const [filter, setFilter] = useState('');
   const [selected, setSelected] = useState(null);
   const [details, setDetails] = useState(null);
+  const [showPricing, setShowPricing] = useState(false);
 
   useEffect(() => { load(); }, []);
 
@@ -124,7 +127,7 @@ export default function Orders() {
                     <div style={{ fontSize: 11, color: '#999' }}>{o.customer_phone}</div>
                   </td>
                   <td>{o.created_at?.substring(0, 10)}</td>
-                  <td><strong className="text-primary">{fmt(o.total_amount)} ر.ي</strong></td>
+                  <td><strong className="text-primary">{o.total_amount != null ? `${fmt(o.total_amount)} ر.ي` : '—'}</strong></td>
                   <td>
                     <span className={`badge ${statusColor(o.status)}`}>
                       {statusAr[o.status] || o.status}
@@ -193,25 +196,148 @@ export default function Orders() {
                     </table>
                   </div>
 
-                  <div className="card">
-                    <h4 style={{ marginBottom: 12 }}>الملخص</h4>
-                    <p><strong>الإجمالي الفرعي:</strong> {fmt(details.subtotal)} ر.ي</p>
-                    <p><strong>الخصم:</strong> {fmt(details.discount_amount)} ر.ي</p>
-                    <p><strong>النقل:</strong> {fmt(details.shipping_amount)} ر.ي</p>
-                    <p style={{ fontSize: 20 }}><strong>الإجمالي:</strong> <span className="text-primary">{fmt(details.total_amount)} ر.ي</span></p>
-                    <p><strong>المدفوع:</strong> {fmt(details.paid_amount)} ر.ي</p>
-                    <p><strong>المتبقي:</strong> <span className="text-danger">{fmt(details.remaining_amount)} ر.ي</span></p>
-                  </div>
+                  {details.total_amount != null ? (
+                    <div className="card">
+                      <h4 style={{ marginBottom: 12 }}>الملخص</h4>
+                      <p><strong>الإجمالي الفرعي:</strong> {fmt(details.subtotal)} ر.ي</p>
+                      <p><strong>الخصم:</strong> {fmt(details.discount_amount)} ر.ي</p>
+                      <p><strong>النقل:</strong> {fmt(details.shipping_amount)} ر.ي</p>
+                      <p style={{ fontSize: 20 }}><strong>الإجمالي:</strong> <span className="text-primary">{fmt(details.total_amount)} ر.ي</span></p>
+                      <p><strong>المدفوع:</strong> {fmt(details.paid_amount)} ر.ي</p>
+                      <p><strong>المتبقي:</strong> <span className="text-danger">{fmt(details.remaining_amount)} ر.ي</span></p>
+                    </div>
+                  ) : (
+                    <div className="alert alert-info">لم يُحدَّد سعر لهذا الطلب بعد.</div>
+                  )}
                 </>
               )}
             </div>
             <div className="modal-footer">
-              <button className="btn btn-primary" onClick={() => printInvoice(selected.id)}>🖨 فاتورة / PDF</button>
+              {details && details.status === 'PENDING_PRICING' && (
+                <button className="btn btn-success" onClick={() => setShowPricing(true)}>💰 تسعير الطلب</button>
+              )}
+              {details && details.total_amount != null && (
+                <button className="btn btn-primary" onClick={() => printInvoice(selected.id)}>🖨 فاتورة / PDF</button>
+              )}
               <button className="btn btn-secondary" onClick={() => { setSelected(null); setDetails(null); }}>إغلاق</button>
             </div>
           </div>
         </div>
       )}
+
+      {showPricing && selected && details && (
+        <PricingModal
+          order={details}
+          onClose={() => setShowPricing(false)}
+          onSaved={() => { setShowPricing(false); openDetails(selected); load(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// === نافذة تسعير الطلب — تظهر فقط للطلبات بانتظار التسعير ===
+function PricingModal({ order, onClose, onSaved }) {
+  const [prices, setPrices] = useState(
+    Object.fromEntries((order.items || []).map((it) => [it.id, { unitPrice: '', discount: '' }]))
+  );
+  const [transportAmount, setTransportAmount] = useState(order.delivery_type === 'alghouli_delivery' ? '' : '0');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const fmt = (n) => (parseFloat(n) || 0).toLocaleString('en-US');
+
+  const setPrice = (id, field, value) => setPrices({ ...prices, [id]: { ...prices[id], [field]: value } });
+
+  const subtotal = (order.items || []).reduce((sum, it) => {
+    const p = prices[it.id] || {};
+    const unitPrice = parseFloat(p.unitPrice) || 0;
+    const discount = parseFloat(p.discount) || 0;
+    return sum + (unitPrice * parseFloat(it.quantity) - discount);
+  }, 0);
+  const total = subtotal + (parseFloat(transportAmount) || 0);
+
+  const save = async () => {
+    for (const it of order.items || []) {
+      if (!prices[it.id]?.unitPrice || parseFloat(prices[it.id].unitPrice) < 0) {
+        setError(`سعر ${it.product_name} مطلوب`);
+        return;
+      }
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await client.patch(`/orders/admin/${order.id}/pricing`, {
+        items: (order.items || []).map((it) => ({
+          orderItemId: it.id,
+          unitPrice: parseFloat(prices[it.id].unitPrice),
+          discount: parseFloat(prices[it.id].discount) || 0,
+        })),
+        transportAmount: parseFloat(transportAmount) || 0,
+      });
+      onSaved();
+    } catch (err) {
+      setError(handleError(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 620 }}>
+        <div className="modal-header">
+          <h3>💰 تسعير الطلب {order.order_number}</h3>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+        <div className="modal-body">
+          {error && <div className="alert alert-error">{error}</div>}
+          <div className="table-container">
+            <table>
+              <thead><tr><th>المنتج</th><th>الكمية</th><th>سعر الوحدة *</th><th>خصم</th></tr></thead>
+              <tbody>
+                {(order.items || []).map((it) => (
+                  <tr key={it.id}>
+                    <td>{it.product_name}</td>
+                    <td>{it.quantity} {it.unit === 'ton' ? 'طن' : 'كيس'}</td>
+                    <td>
+                      <input type="number" className="form-input" style={{ width: 110 }}
+                        value={prices[it.id]?.unitPrice ?? ''}
+                        onChange={(e) => setPrice(it.id, 'unitPrice', e.target.value)} />
+                    </td>
+                    <td>
+                      <input type="number" className="form-input" style={{ width: 90 }}
+                        value={prices[it.id]?.discount ?? ''}
+                        onChange={(e) => setPrice(it.id, 'discount', e.target.value)} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="form-group" style={{ marginTop: 12 }}>
+            <label className="form-label">أجرة النقل (ريال)</label>
+            <input type="number" className="form-input" value={transportAmount}
+              onChange={(e) => setTransportAmount(e.target.value)}
+              disabled={order.delivery_type !== 'alghouli_delivery'} />
+            {order.delivery_type !== 'alghouli_delivery' && (
+              <p style={{ fontSize: 12, color: '#666' }}>العميل يستلم بقاطرته الخاصة — لا أجرة نقل على المؤسسة.</p>
+            )}
+          </div>
+          <div style={{ padding: 14, background: '#E8F5E9', borderRadius: 10, marginTop: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 18 }}>
+              <span>إجمالي الطلب:</span>
+              <strong style={{ color: '#2E7D32' }}>{fmt(total)} ريال</strong>
+            </div>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose}>إلغاء</button>
+          <button className="btn btn-success" onClick={save} disabled={saving}>
+            {saving ? '...' : '💾 حفظ وإشعار العميل'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -11,6 +11,10 @@ router.post('/', controller.create);
 router.get('/', controller.list);
 router.get('/credit-check', controller.checkCredit);
 router.patch('/:id/cancel', controller.cancel);
+router.patch('/:id/choose-payment', controller.choosePayment);
+
+router.get('/admin/pending-pricing', requireRoles('admin', 'sales'), controller.listPendingPricing);
+router.patch('/admin/:id/pricing', requireRoles('admin', 'sales'), controller.setPricing);
 
 // للمدير — الطلبات المعلقة
 router.get('/admin/pending-credit', requireRoles('admin'), controller.listPendingCredit);

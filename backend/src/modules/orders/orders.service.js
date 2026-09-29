@@ -65,8 +65,6 @@ const createOrder = async (userId, data) => {
     const customer = cust.rows[0];
 
     let addressId = data.addressId;
-    let gov = customer.governorate;
-    let area = customer.area;
 
     if (data.deliveryType === 'alghouli_delivery') {
       if (!addressId) {
@@ -75,8 +73,7 @@ const createOrder = async (userId, data) => {
         throw err;
       }
       const a = await client.query(
-        `SELECT id, governorate, area FROM customer_addresses
-         WHERE id = $1 AND customer_id = $2`,
+        `SELECT id FROM customer_addresses WHERE id = $1 AND customer_id = $2`,
         [addressId, customerId]
       );
       if (a.rows.length === 0) {
@@ -84,8 +81,6 @@ const createOrder = async (userId, data) => {
         err.status = 404;
         throw err;
       }
-      gov = a.rows[0].governorate;
-      area = a.rows[0].area;
     } else if (data.deliveryType === 'trader_pickup') {
       if (!data.traderTruckPlate || !data.traderDriverName) {
         const err = new Error('رقم الشاحنة واسم السائق مطلوبان');
@@ -109,10 +104,9 @@ const createOrder = async (userId, data) => {
       }
     }
 
-    let subtotal = 0;
-    let transportTotal = 0;
+    // لا يُحدَّد سعر هنا إطلاقًا (مواصفة الواجهة الجديدة، بند 13/17/21): العميل يختار
+    // المصنع والنوع والكمية فقط، والموظف المخوَّل يحدد السعر لاحقًا عبر setOrderPricing.
     const items = [];
-
     for (const item of data.items) {
       const p = await client.query(
         `SELECT p.id, p.source_id, p.packaging_type, p.name_ar,
@@ -137,74 +131,27 @@ const createOrder = async (userId, data) => {
         throw err;
       }
 
-      // 1. سعر خاص للعميل
-      let price = await transportService.getCustomerProductPrice(
-        customerId, product.id, item.quantity
-      );
-
-      // 2. سعر عام حسب النوع
-      if (price === null) {
-        const pr = await client.query(
-          `SELECT pp.price FROM product_prices pp
-           JOIN price_lists pl ON pl.id = pp.price_list_id
-           WHERE pp.product_id = $1 AND pl.customer_type = $2
-             AND $3 >= pp.min_qty
-             AND ($3 <= pp.max_qty OR pp.max_qty IS NULL)
-           ORDER BY pp.min_qty DESC LIMIT 1`,
-          [product.id, customer.customer_type, item.quantity]
-        );
-        if (pr.rows.length === 0) {
-          const err = new Error('لا يوجد سعر متاح');
-          err.status = 400;
-          throw err;
-        }
-        price = parseFloat(pr.rows[0].price);
-      }
-
-      const lineTotal = price * item.quantity;
-      subtotal += lineTotal;
-
-      let lineTransport = 0;
-      if (data.deliveryType === 'alghouli_delivery') {
-        const t = await transportService.calculateTransport({
-          customerId,
-          sourceId: product.source_id,
-          governorate: gov,
-          area,
-          packagingType: product.packaging_type,
-          quantity: item.quantity,
-          unit: product.unit,
-        });
-        lineTransport = t.amount;
-      }
-      transportTotal += lineTransport;
-
       items.push({
         productId: product.id,
         sourceId: product.source_id,
         packagingType: product.packaging_type,
         quantity: item.quantity,
         unit: product.unit,
-        unitPrice: price,
-        lineTotal,
       });
     }
 
-    const totalAmount = subtotal + transportTotal;
-
-    // فحص سقوف الطلبات (بند 28) — لا يرمي إلا عند تجاوز فعلي؛ أي خطأ غير متوقع في
-    // الفحص نفسه (كأن الجداول لم تُنشأ بعد) يُسجَّل ويُتجاوَز فلا يُعطَّل إنشاء الطلبات.
+    // فحص سقوف الكمية (بند 28) — يعتمد على الكمية فقط لأن السعر غير معروف بعد.
+    // سقوف القيمة (بالريال) تُفحص لاحقًا عند التسعير في setOrderPricing.
     try {
       const bySource = {};
       for (const it of items) {
-        const s = (bySource[it.sourceId] ||= { bags: 0, amount: 0 });
+        const s = (bySource[it.sourceId] ||= { bags: 0 });
         if (it.unit === 'bag') s.bags += it.quantity;
-        s.amount += it.lineTotal;
       }
       for (const [sourceId, agg] of Object.entries(bySource)) {
         const check = await ceilingsService.checkOrderCeilings(client, {
           customerId, sourceId, categoryId: null,
-          requestedBags: agg.bags, requestedAmount: agg.amount,
+          requestedBags: agg.bags, requestedAmount: 0,
         });
         if (check.exceeded) {
           const err = new Error('تم تجاوز السقف المسموح به لهذا الطلب. يمكنك إرسال طلب موافقة استثنائية.');
@@ -219,40 +166,7 @@ const createOrder = async (userId, data) => {
       console.error('تحذير: تعذّر فحص سقوف الطلبات (تم تجاوز الفحص):', ceilErr.message);
     }
 
-    const paymentTerms = data.paymentTerms || 'cash';
-
-    let paidNow = 0;
-    let creditAmount = 0;
-
-    if (paymentTerms === 'cash') {
-      paidNow = totalAmount;
-    } else if (paymentTerms === 'credit') {
-      creditAmount = totalAmount;
-    } else if (paymentTerms === 'partial') {
-      paidNow = parseFloat(data.paidAmountNow || 0);
-      if (paidNow < 0 || paidNow > totalAmount) {
-        const err = new Error('المبلغ المدفوع غير صحيح');
-        err.status = 400;
-        throw err;
-      }
-      creditAmount = totalAmount - paidNow;
-    }
-
-    let creditCheck = null;
-    if (creditAmount > 0) {
-      creditCheck = await checkCreditAvailability(client, customerId, creditAmount);
-      if (!creditCheck.can_approve) {
-        const err = new Error(
-          `تجاوز الحد الائتماني. الرصيد: ${creditCheck.current_balance}، الحد: ${creditCheck.credit_limit}`
-        );
-        err.status = 400;
-        err.code = 'CREDIT_LIMIT_EXCEEDED';
-        err.data = creditCheck;
-        throw err;
-      }
-    }
-
-    const initialStatus = creditAmount > 0 ? 'PENDING_ADMIN_APPROVAL' : 'PENDING_PAYMENT';
+    const initialStatus = 'PENDING_PRICING';
     const orderNumber = await generateOrderNumber();
 
     const o = await client.query(
@@ -261,17 +175,17 @@ const createOrder = async (userId, data) => {
         subtotal, discount_amount, shipping_amount, total_amount,
         paid_amount, remaining_amount, notes, created_by,
         delivery_type, trader_truck_plate, trader_driver_name, trader_driver_phone,
-        transport_unit, payment_terms, paid_amount_now, credit_amount)
+        transport_unit)
        VALUES ($1, $2, $3, $4, 'ONLINE',
-               $5, 0, $6, $7, 0, $7, $8, $9,
-               $10, $11, $12, $13, $14, $15, $16, $17)
-       RETURNING id, order_number, status, subtotal, shipping_amount, total_amount, created_at`,
+               NULL, 0, NULL, NULL, 0, NULL, $5, $6,
+               $7, $8, $9, $10, $11)
+       RETURNING id, order_number, status, created_at`,
       [
         orderNumber, customerId, addressId, initialStatus,
-        subtotal, transportTotal, totalAmount, data.notes || null, userId,
+        data.notes || null, userId,
         data.deliveryType, data.traderTruckPlate || null,
         data.traderDriverName || null, data.traderDriverPhone || null,
-        items[0]?.unit || 'bag', paymentTerms, paidNow, creditAmount,
+        items[0]?.unit || 'bag',
       ]
     );
     const order = o.rows[0];
@@ -281,9 +195,8 @@ const createOrder = async (userId, data) => {
         `INSERT INTO order_items
          (order_id, product_id, source_id, packaging_type, quantity, unit,
           unit_price, discount, line_total)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8)`,
-        [order.id, it.productId, it.sourceId, it.packagingType,
-         it.quantity, it.unit, it.unitPrice, it.lineTotal]
+         VALUES ($1, $2, $3, $4, $5, $6, NULL, 0, NULL)`,
+        [order.id, it.productId, it.sourceId, it.packagingType, it.quantity, it.unit]
       );
       await client.query(
         `UPDATE inventory SET reserved_qty = reserved_qty + $1, updated_at = NOW()
@@ -292,33 +205,198 @@ const createOrder = async (userId, data) => {
       );
     }
 
-    // سجّل الجزء الآجل فقط في كشف الحساب
+    await client.query(
+      `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
+       VALUES ($1, NULL, $2, $3, 'طلب جديد بانتظار التسعير')`,
+      [order.id, initialStatus, userId]
+    );
+
+    await client.query('COMMIT');
+    return { ...order, delivery_type: data.deliveryType };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
+/**
+ * تسعير الطلب من موظف مخوَّل (بند 21-23): يحدد سعر كل عنصر + أجرة النقل، وتُحسب
+ * القيمة الإجمالية تلقائيًا. لا يمكن للعميل رؤية أي سعر قبل هذه الخطوة، ولا يمكن
+ * تسعير طلب أكثر من مرة عبر هذا المسار (تعديل لاحق يكون عبر إجراء منفصل + سجل تعديل).
+ */
+const setOrderPricing = async (orderId, staffUserId, data) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const o = await client.query(`SELECT * FROM orders WHERE id = $1 FOR UPDATE`, [orderId]);
+    if (o.rows.length === 0) { const e = new Error('الطلب غير موجود'); e.status = 404; throw e; }
+    const order = o.rows[0];
+    if (order.status !== 'PENDING_PRICING') {
+      const e = new Error('لا يمكن تسعير الطلب في حالته الحالية'); e.status = 400; throw e;
+    }
+
+    const existingItems = await client.query(`SELECT * FROM order_items WHERE order_id = $1`, [orderId]);
+    const priceById = new Map((data.items || []).map((i) => [i.orderItemId, i]));
+
+    let subtotal = 0;
+    let bySourceAmount = {};
+    for (const item of existingItems.rows) {
+      const input = priceById.get(item.id);
+      if (!input) { const e = new Error(`سعر مفقود لعنصر الطلب ${item.id}`); e.status = 400; throw e; }
+      const unitPrice = parseFloat(input.unitPrice);
+      const discount = parseFloat(input.discount || 0);
+      if (!(unitPrice >= 0)) { const e = new Error('سعر غير صحيح'); e.status = 400; throw e; }
+      const lineTotal = unitPrice * parseFloat(item.quantity) - discount;
+      subtotal += lineTotal;
+      bySourceAmount[item.source_id] = (bySourceAmount[item.source_id] || 0) + lineTotal;
+
+      await client.query(
+        `UPDATE order_items SET unit_price = $1, discount = $2, line_total = $3 WHERE id = $4`,
+        [unitPrice, discount, lineTotal, item.id]
+      );
+    }
+
+    const transportAmount = parseFloat(data.transportAmount || 0);
+    const totalAmount = subtotal + transportAmount;
+
+    // فحص سقوف القيمة الآن بعد معرفتها (تحذير فقط: لا يوقف الموظف، فهو مخوَّل بالفعل)
+    try {
+      for (const [sourceId, amount] of Object.entries(bySourceAmount)) {
+        const check = await ceilingsService.checkOrderCeilings(client, {
+          customerId: order.customer_id, sourceId, categoryId: null,
+          requestedBags: 0, requestedAmount: amount,
+        });
+        if (check.exceeded) {
+          console.warn(`تنبيه: تسعير الطلب ${order.order_number} يتجاوز سقف القيمة المحدد لهذا العميل/المصنع.`);
+        }
+      }
+    } catch (ceilErr) {
+      console.error('تعذّر فحص سقوف القيمة عند التسعير (تم تجاوزه):', ceilErr.message);
+    }
+
+    await client.query(
+      `UPDATE orders SET
+         subtotal = $1, shipping_amount = $2, total_amount = $3, remaining_amount = $3,
+         status = 'PENDING_PAYMENT_METHOD', priced_by = $4, priced_at = NOW(), updated_at = NOW()
+       WHERE id = $5`,
+      [subtotal, transportAmount, totalAmount, staffUserId, orderId]
+    );
+
+    await client.query(
+      `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
+       VALUES ($1, 'PENDING_PRICING', 'PENDING_PAYMENT_METHOD', $2, 'تم تحديد السعر')`,
+      [orderId, staffUserId]
+    );
+
+    // إشعار العميل بقيمة الطلب (بند 23) — غير حرج: لا يوقف التسعير لو فشل
+    try {
+      await client.query('SAVEPOINT price_notify_sp');
+      const cust = await client.query(
+        `SELECT u.id AS user_id FROM customers c JOIN users u ON u.id = c.user_id WHERE c.id = $1`,
+        [order.customer_id]
+      );
+      if (cust.rows[0]) {
+        await client.query(
+          `INSERT INTO notifications (user_id, title_ar, body_ar, type, reference_type, reference_id)
+           VALUES ($1, 'تم تحديد قيمة طلبك', $2, 'ORDER_PRICED', 'orders', $3)`,
+          [cust.rows[0].user_id, `إشعار قيمة الطلب رقم ${order.order_number}: ${totalAmount.toLocaleString('en-US')} ريال. يرجى اختيار طريقة السداد.`, orderId]
+        );
+      }
+    } catch (notifyErr) {
+      await client.query('ROLLBACK TO SAVEPOINT price_notify_sp');
+      console.error('تعذّر إرسال إشعار التسعير (تم تجاهله):', notifyErr.message);
+    }
+
+    await client.query('COMMIT');
+    return { id: orderId, status: 'PENDING_PAYMENT_METHOD', subtotal, shipping_amount: transportAmount, total_amount: totalAmount };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
+/**
+ * اختيار طريقة السداد بعد معرفة السعر (بند 24): فوري / آجل / جزئي.
+ * هذه الخطوة تحل محل منطق الدفع الذي كان يحدث عند الإنشاء سابقًا، وتُبقي
+ * على نفس تدفق العمل بعدها دون تغيير (اعتماد الائتمان / رفع إيصال الدفع).
+ */
+const choosePaymentMethod = async (orderId, userId, data) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const cust = await client.query(`SELECT id FROM customers WHERE user_id = $1`, [userId]);
+    if (cust.rows.length === 0) { const e = new Error('العميل غير موجود'); e.status = 404; throw e; }
+    const customerId = cust.rows[0].id;
+
+    const o = await client.query(
+      `SELECT * FROM orders WHERE id = $1 AND customer_id = $2 FOR UPDATE`,
+      [orderId, customerId]
+    );
+    if (o.rows.length === 0) { const e = new Error('الطلب غير موجود'); e.status = 404; throw e; }
+    const order = o.rows[0];
+    if (order.status !== 'PENDING_PAYMENT_METHOD') {
+      const e = new Error('لا يمكن اختيار طريقة السداد في هذه الحالة'); e.status = 400; throw e;
+    }
+    const totalAmount = parseFloat(order.total_amount);
+    const paymentTerms = data.paymentTerms;
+
+    let paidNow = 0;
+    let creditAmount = 0;
+    if (paymentTerms === 'cash') {
+      paidNow = totalAmount;
+    } else if (paymentTerms === 'credit') {
+      creditAmount = totalAmount;
+    } else if (paymentTerms === 'partial') {
+      paidNow = parseFloat(data.paidAmountNow || 0);
+      if (paidNow < 0 || paidNow > totalAmount) { const e = new Error('المبلغ المدفوع غير صحيح'); e.status = 400; throw e; }
+      creditAmount = totalAmount - paidNow;
+    }
+
+    let creditCheck = null;
+    if (creditAmount > 0) {
+      creditCheck = await checkCreditAvailability(client, customerId, creditAmount);
+      if (!creditCheck.can_approve) {
+        const e = new Error(`تجاوز الحد الائتماني. الرصيد: ${creditCheck.current_balance}، الحد: ${creditCheck.credit_limit}`);
+        e.status = 400; e.code = 'CREDIT_LIMIT_EXCEEDED'; e.data = creditCheck;
+        throw e;
+      }
+    }
+
+    const nextStatus = creditAmount > 0 ? 'PENDING_ADMIN_APPROVAL' : 'PENDING_PAYMENT';
+
+    await client.query(
+      `UPDATE orders SET payment_terms = $1, paid_amount_now = $2, credit_amount = $3,
+         status = $4, updated_at = NOW() WHERE id = $5`,
+      [paymentTerms, paidNow, creditAmount, nextStatus, orderId]
+    );
+
     if (creditAmount > 0) {
       await ledgerService.addTransaction(client, {
-        customerId, orderId: order.id,
+        customerId, orderId,
         transactionType: 'purchase',
         debit: creditAmount,
-        description: `طلب ${orderNumber} - ${paymentTerms === 'partial' ? 'دفع جزئي' : 'آجل'}`,
+        description: `طلب ${order.order_number} - ${paymentTerms === 'partial' ? 'دفع جزئي' : 'آجل'}`,
         createdBy: userId,
       });
     }
 
     await client.query(
       `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
-       VALUES ($1, NULL, $2, $3, $4)`,
-      [order.id, initialStatus, userId,
-       paymentTerms === 'credit' ? 'طلب آجل' :
-       paymentTerms === 'partial' ? 'دفع جزئي' : 'طلب فوري']
+       VALUES ($1, 'PENDING_PAYMENT_METHOD', $2, $3, $4)`,
+      [orderId, nextStatus, userId,
+        paymentTerms === 'credit' ? 'طلب آجل' : paymentTerms === 'partial' ? 'دفع جزئي' : 'طلب فوري']
     );
 
     await client.query('COMMIT');
     return {
-      ...order,
-      delivery_type: data.deliveryType,
-      payment_terms: paymentTerms,
-      paid_amount_now: paidNow,
-      credit_amount: creditAmount,
-      credit_check: creditCheck,
+      id: orderId, status: nextStatus, payment_terms: paymentTerms,
+      paid_amount_now: paidNow, credit_amount: creditAmount, credit_check: creditCheck,
     };
   } catch (err) {
     await client.query('ROLLBACK');
@@ -326,6 +404,19 @@ const createOrder = async (userId, data) => {
   } finally {
     client.release();
   }
+};
+
+const listPendingPricing = async () => {
+  const r = await query(
+    `SELECT o.id, o.order_number, o.delivery_type, o.created_at,
+            u.full_name AS customer_name, u.phone AS customer_phone
+     FROM orders o
+     JOIN customers c ON c.id = o.customer_id
+     JOIN users u ON u.id = c.user_id
+     WHERE o.status = 'PENDING_PRICING'
+     ORDER BY o.created_at ASC`
+  );
+  return r.rows;
 };
 
 const approveCreditOrder = async (orderId, adminId) => {
@@ -514,7 +605,7 @@ const cancelOrder = async (orderId, userId, reason) => {
       throw err;
     }
     const order = r.rows[0];
-    if (!['PENDING_PAYMENT', 'RECEIPT_UPLOADED', 'CREATED', 'PENDING_ADMIN_APPROVAL'].includes(order.status)) {
+    if (!['PENDING_PRICING', 'PENDING_PAYMENT_METHOD', 'PENDING_PAYMENT', 'RECEIPT_UPLOADED', 'CREATED', 'PENDING_ADMIN_APPROVAL'].includes(order.status)) {
       const err = new Error('لا يمكن الإلغاء في هذه الحالة');
       err.status = 400;
       throw err;
@@ -559,7 +650,8 @@ const cancelOrder = async (orderId, userId, reason) => {
 };
 
 module.exports = {
-  createOrder, approveCreditOrder, rejectCreditOrder,
+  createOrder, setOrderPricing, choosePaymentMethod, listPendingPricing,
+  approveCreditOrder, rejectCreditOrder,
   listPendingCreditOrders, checkCreditAvailability,
   getMyOrders, getOrderById, cancelOrder,
 };

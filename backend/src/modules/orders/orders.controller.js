@@ -4,6 +4,9 @@ const response = require('../../utils/response');
 const service = require('./orders.service');
 const transportService = require('./transport.service');
 
+// لا سعر ولا طريقة دفع عند الإنشاء (مواصفة الواجهة الجديدة) — تُحدَّد لاحقًا عبر
+// setOrderPricing (الموظف) ثم choosePayment (العميل). أي حقول قديمة زائدة تُتجاهَل
+// بأمان (لتوافق أي نسخة تطبيق سابقة لم تُحدَّث بعد).
 const createSchema = z.object({
   deliveryType: z.enum(['alghouli_delivery', 'trader_pickup']),
   addressId: z.string().uuid().optional(),
@@ -15,7 +18,19 @@ const createSchema = z.object({
   traderTruckPlate: z.string().max(30).optional(),
   traderDriverName: z.string().max(150).optional(),
   traderDriverPhone: z.string().max(20).optional(),
-  paymentTerms: z.enum(['cash', 'credit', 'partial']).optional(),
+}).passthrough();
+
+const pricingSchema = z.object({
+  items: z.array(z.object({
+    orderItemId: z.string().uuid(),
+    unitPrice: z.number().min(0),
+    discount: z.number().min(0).optional(),
+  })).min(1),
+  transportAmount: z.number().min(0).optional(),
+});
+
+const paymentMethodSchema = z.object({
+  paymentTerms: z.enum(['cash', 'credit', 'partial']),
   paidAmountNow: z.number().min(0).optional(),
 });
 
@@ -23,6 +38,22 @@ const create = asyncHandler(async (req, res) => {
   const data = createSchema.parse(req.body);
   const order = await service.createOrder(req.user.id, data);
   return response.created(res, order, 'تم إنشاء الطلب بنجاح');
+});
+
+const setPricing = asyncHandler(async (req, res) => {
+  const data = pricingSchema.parse(req.body);
+  const result = await service.setOrderPricing(req.params.id, req.user.id, data);
+  return response.success(res, result, 'تم تحديد سعر الطلب');
+});
+
+const choosePayment = asyncHandler(async (req, res) => {
+  const data = paymentMethodSchema.parse(req.body);
+  const result = await service.choosePaymentMethod(req.params.id, req.user.id, data);
+  return response.success(res, result, 'تم تسجيل طريقة السداد');
+});
+
+const listPendingPricing = asyncHandler(async (req, res) => {
+  return response.success(res, await service.listPendingPricing(), 'طلبات بانتظار التسعير');
 });
 
 const list = asyncHandler(async (req, res) => {
@@ -132,7 +163,7 @@ const removeCustomerProductPrice = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
-  create, list, getById, cancel,
+  create, list, getById, cancel, setPricing, choosePayment, listPendingPricing,
   listPendingCredit, approveCredit, rejectCredit, checkCredit,
   listTransportRates, createTransportRate, updateTransportRate, removeTransportRate,
   listCustomerTransportRates, createCustomerTransportRate, removeCustomerTransportRate,
