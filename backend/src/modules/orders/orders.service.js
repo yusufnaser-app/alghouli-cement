@@ -1,6 +1,7 @@
 const { pool, query } = require('../../config/db');
 const transportService = require('./transport.service');
 const ledgerService = require('../customers/ledger.service');
+const ceilingsService = require('../ceilings/ceilings.service');
 
 const generateOrderNumber = async () => {
   const year = new Date().getFullYear();
@@ -190,6 +191,34 @@ const createOrder = async (userId, data) => {
     }
 
     const totalAmount = subtotal + transportTotal;
+
+    // فحص سقوف الطلبات (بند 28) — لا يرمي إلا عند تجاوز فعلي؛ أي خطأ غير متوقع في
+    // الفحص نفسه (كأن الجداول لم تُنشأ بعد) يُسجَّل ويُتجاوَز فلا يُعطَّل إنشاء الطلبات.
+    try {
+      const bySource = {};
+      for (const it of items) {
+        const s = (bySource[it.sourceId] ||= { bags: 0, amount: 0 });
+        if (it.unit === 'bag') s.bags += it.quantity;
+        s.amount += it.lineTotal;
+      }
+      for (const [sourceId, agg] of Object.entries(bySource)) {
+        const check = await ceilingsService.checkOrderCeilings(client, {
+          customerId, sourceId, categoryId: null,
+          requestedBags: agg.bags, requestedAmount: agg.amount,
+        });
+        if (check.exceeded) {
+          const err = new Error('تم تجاوز السقف المسموح به لهذا الطلب. يمكنك إرسال طلب موافقة استثنائية.');
+          err.status = 400;
+          err.code = 'CEILING_EXCEEDED';
+          err.data = check.results.filter((r) => r.exceeded);
+          throw err;
+        }
+      }
+    } catch (ceilErr) {
+      if (ceilErr.code === 'CEILING_EXCEEDED') throw ceilErr;
+      console.error('تحذير: تعذّر فحص سقوف الطلبات (تم تجاوز الفحص):', ceilErr.message);
+    }
+
     const paymentTerms = data.paymentTerms || 'cash';
 
     let paidNow = 0;

@@ -11,6 +11,7 @@ const menuItems = [
     { path: '/awaiting-route', label: 'بانتظار خط السير', icon: '📍', roles: ['transport', 'admin', 'sales'], badge: 'awaiting' },
   ]},
   { section: 'العمليات', items: [
+    { path: '/ceilings', label: 'سقوف الطلبات', icon: '🚧', roles: ['sales', 'admin'] },
     { path: '/orders', label: 'الطلبات', icon: '📦', roles: ['sales', 'admin'] },
     { path: '/pending-credit', label: 'طلبات بانتظار الموافقة', icon: '⏳', roles: ['admin'], badge: 'pending' },
     { path: '/payments', label: 'المدفوعات', icon: '💰', roles: ['accountant', 'admin'] },
@@ -31,6 +32,7 @@ const menuItems = [
     { path: '/reports', label: 'التقارير', icon: '📈', roles: ['accountant', 'admin', 'sales'] },
   ]},
   { section: 'النظام', items: [
+    { path: '/sms', label: 'الرسائل النصية', icon: '✉️', roles: ['admin'] },
     { path: '/settings', label: 'الإعدادات', icon: '⚙️', roles: ['admin'] },
   ]},
 ];

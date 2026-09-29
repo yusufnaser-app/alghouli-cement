@@ -1,4 +1,5 @@
 const { pool, query } = require('../../config/db');
+const { queueSms } = require('../../services/sms.service');
 
 const generateFaxNumber = async (client) => {
   const year = new Date().getFullYear();
@@ -176,21 +177,16 @@ const createBulkFaxes = async (items, staffUserId) => {
           );
         }
 
-        // SMS queue — بنقطة حفظ فرعية حتى لا يفشل إنشاء الفاكس نفسه لو تعذّر إدراج SMS
-        try {
-          await client.query('SAVEPOINT sms_sp');
-          await client.query(
-            `INSERT INTO sms_messages (phone, message_type, message, status)
-             VALUES ($1, 'FAX_ISSUED', $2, 'pending')`,
-            [
-              driver.phone,
-              `مؤسسة الغولي: تم إصدار فاكس التحميل رقم ${faxNumber} من ${f.rows[0].name_ar}. الكمية: ${item.quantity} كيس.`,
-            ]
-          );
-        } catch (smsErr) {
-          await client.query('ROLLBACK TO SAVEPOINT sms_sp');
-          console.error('SMS queue error (تم تجاهله، الفاكس تم إنشاؤه بنجاح):', smsErr.message);
-        }
+        // SMS: قالب من قاعدة البيانات؛ فشلها لا يُفشل إنشاء الفاكس
+        await queueSms({
+          client,
+          phone: driver.phone,
+          templateKey: 'FAX_ISSUED',
+          messageType: 'FAX_ISSUED',
+          operationId: faxNumber,
+          vars: { fax_number: faxNumber, factory_name: f.rows[0].name_ar, quantity: item.quantity },
+          fallbackText: `مؤسسة الغولي: تم إصدار فاكس التحميل رقم ${faxNumber} من ${f.rows[0].name_ar}. الكمية: ${item.quantity} كيس.`,
+        });
 
         await client.query('RELEASE SAVEPOINT item_sp');
         results.created.push({

@@ -32,6 +32,8 @@ const traderManagementRoutes = require('./modules/traders/driver-management.rout
 const accountingRoutes = require('./modules/accounting/accounting.routes');
 const incentivesRoutes = require('./modules/incentives/incentives.routes');
 const crmRoutes = require('./modules/crm/crm.routes');
+const smsRoutes = require('./modules/sms/sms.routes');
+const ceilingsRoutes = require('./modules/ceilings/ceilings.routes');
 const errorHandler = require('./middlewares/errorHandler');
 const response = require('./utils/response');
 
@@ -76,6 +78,8 @@ api.use('/traders/me', traderManagementRoutes);
 api.use('/accounting', accountingRoutes);
 api.use('/incentives', incentivesRoutes);
 api.use('/crm', crmRoutes);
+api.use('/sms', smsRoutes);
+api.use('/ceilings', ceilingsRoutes);
 
 app.use('/api/v1', api);
 app.use((req, res) => response.error(res, 'المسار غير موجود', 404, 'NOT_FOUND'));

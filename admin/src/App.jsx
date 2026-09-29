@@ -21,6 +21,8 @@ import DriverFinances from './pages/driverFinances/DriverFinances';
 import DriverFile from './pages/driverFile/DriverFile';
 import Incentives from './pages/incentives/Incentives';
 import Crm from './pages/crm/Crm';
+import Sms from './pages/sms/Sms';
+import Ceilings from './pages/ceilings/Ceilings';
 import Vehicles from './pages/vehicles/Vehicles';
 import Reports from './pages/reports/Reports';
 import Settings from './pages/settings/Settings';
@@ -70,6 +72,8 @@ export default function App() {
           <Route path="/drivers" element={<ProtectedRoute><Drivers /></ProtectedRoute>} />
           <Route path="/pending-drivers" element={<ProtectedRoute><PendingDrivers /></ProtectedRoute>} />
           <Route path="/driver-finances" element={<ProtectedRoute><DriverFinances /></ProtectedRoute>} />
+          <Route path="/ceilings" element={<ProtectedRoute><Ceilings /></ProtectedRoute>} />
+          <Route path="/sms" element={<ProtectedRoute><Sms /></ProtectedRoute>} />
           <Route path="/crm" element={<ProtectedRoute><Crm /></ProtectedRoute>} />
           <Route path="/incentives" element={<ProtectedRoute><Incentives /></ProtectedRoute>} />
           <Route path="/drivers/:id/file" element={<ProtectedRoute><DriverFile /></ProtectedRoute>} />
