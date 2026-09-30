@@ -30,4 +30,8 @@ const listByOrder = asyncHandler(async (req, res) => {
   return response.success(res, deliveries, 'رحلات الطلب');
 });
 
-module.exports = { assign, updateStatus, listByOrder };
+const pendingAssignment = asyncHandler(async (req, res) => {
+  return response.success(res, await service.listPendingAssignment(), 'طلبات التوصيل بانتظار تعيين سائق');
+});
+
+module.exports = { assign, updateStatus, listByOrder, pendingAssignment };

@@ -9,6 +9,8 @@ const submitSchema = z.object({
   amountTransferred: z.number().positive(),
   transferDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   transactionRef: z.string().max(100).optional(),
+  receiptUrl: z.string().url().max(2000).optional(),
+  receiptPath: z.string().max(500).optional(),
 });
 
 const rejectSchema = z.object({

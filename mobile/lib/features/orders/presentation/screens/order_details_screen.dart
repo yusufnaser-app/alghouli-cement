@@ -152,6 +152,24 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
             _row('العنوان', o['address_text'] ?? ''),
           ]),
 
+          if (o['delivery_type'] != null || o['fax_requested'] == true)
+            _section('تنفيذ الطلب', [
+              _row('طريقة النقل', o['delivery_type'] == 'trader_pickup' ? 'سائق وقاطرة التاجر' : 'توصيل مؤسسة الغولي'),
+              _row('الفاكس', o['fax_requested'] == true ? 'مطلوب' : 'غير مطلوب'),
+              if (o['trader_driver_name'] != null) _row('السائق', o['trader_driver_name'].toString()),
+              if (o['trader_truck_plate'] != null) _row('القاطرة', o['trader_truck_plate'].toString()),
+              if (o['quantity_loaded'] != null) _row('الكمية المحملة فعليًا', '${o['quantity_loaded']}'),
+              if (o['quantity_discrepancy'] != null) _row('فرق التحميل', '${o['quantity_discrepancy']}'),
+              if (o['transport_beneficiary'] != null) _row('مستفيد النقل', o['transport_beneficiary'] == 'trader' ? 'التاجر' : 'السائق'),
+              if (o['fax'] != null) ...[
+                _row('رقم الفاكس', o['fax']['fax_number']?.toString() ?? 'لم يصدر بعد'),
+                _row('حالة الفاكس', o['fax']['status']?.toString() ?? ''),
+                if (o['fax']['factory_name'] != null) _row('المصنع', o['fax']['factory_name'].toString()),
+                if (o['fax']['driver_name'] != null) _row('سائق التحميل', o['fax']['driver_name'].toString()),
+                if (o['fax']['plate_number'] != null) _row('قافلة التحميل', o['fax']['plate_number'].toString()),
+              ],
+            ]),
+
           // المنتجات
           _section(
             'المنتجات',
@@ -190,6 +208,19 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
           ),
 
           // الملخص المالي — لا يظهر إطلاقًا قبل أن يحدد الموظف السعر
+          if (o['accounting_posting'] != null)
+            _section('الترحيل المحاسبي', [
+              _row('حالة الترحيل', 'تم الترحيل'),
+              _row('الكمية المعتمدة', '${o['accounting_posting']['loaded_quantity'] ?? o['final_loaded_quantity'] ?? ''}'),
+              _row('قيمة البيع الفعلية', '${_fmt(o['accounting_posting']['customer_debit'])} ريال'),
+              _row('المدفوع', '${_fmt(o['accounting_posting']['customer_payment_credit'])} ريال'),
+              _row('أجور السائق', '${_fmt(o['accounting_posting']['driver_transport_debit'])} ريال'),
+            ])
+          else if (o['accounting_status'] != null && o['accounting_status'] != 'POSTED')
+            _section('الترحيل المحاسبي', [
+              _row('الحالة', 'بانتظار تثبيت التحميل والترحيل'),
+            ]),
+
           if (hasPrice)
             _section('الملخص المالي', [
               _row('الإجمالي الفرعي', '${_fmt(o['subtotal'])} ريال'),

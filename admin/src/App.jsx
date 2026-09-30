@@ -26,6 +26,8 @@ import Ceilings from './pages/ceilings/Ceilings';
 import Vehicles from './pages/vehicles/Vehicles';
 import Reports from './pages/reports/Reports';
 import Settings from './pages/settings/Settings';
+import Deliveries from './pages/deliveries/Deliveries';
+import AccountingFulfillment from './pages/accountingFulfillment/AccountingFulfillment';
 import './index.css';
 
 function ProtectedRoute({ children }) {
@@ -80,7 +82,8 @@ export default function App() {
           <Route path="/vehicles" element={<ProtectedRoute><Vehicles /></ProtectedRoute>} />
           <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-          <Route path="/deliveries" element={<ProtectedRoute><Placeholder icon="🚚" title="التوصيل" /></ProtectedRoute>} />
+          <Route path="/deliveries" element={<ProtectedRoute><Deliveries /></ProtectedRoute>} />
+          <Route path="/accounting-fulfillment" element={<ProtectedRoute><AccountingFulfillment /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>

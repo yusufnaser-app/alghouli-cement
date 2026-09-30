@@ -13,8 +13,10 @@ const menuItems = [
   { section: 'العمليات', items: [
     { path: '/ceilings', label: 'سقوف الطلبات', icon: '🚧', roles: ['sales', 'admin'] },
     { path: '/orders', label: 'الطلبات', icon: '📦', roles: ['sales', 'admin'] },
+    { path: '/deliveries', label: 'تعيين التوصيل', icon: '🚚', roles: ['transport', 'admin'] },
     { path: '/pending-credit', label: 'طلبات بانتظار الموافقة', icon: '⏳', roles: ['admin'], badge: 'pending' },
     { path: '/payments', label: 'المدفوعات', icon: '💰', roles: ['accountant', 'admin'] },
+    { path: '/accounting-fulfillment', label: 'ترحيل التحميل والحسابات', icon: '📚', roles: ['accountant', 'admin'] },
   ]},
   { section: 'الإدارة', items: [
     { path: '/products', label: 'المنتجات', icon: '📋', roles: ['admin', 'inventory'] },
@@ -43,6 +45,8 @@ const pageTitles = {
   '/bulk-fax': { title: 'فاكس جماعي', subtitle: 'إنشاء فاكسات متعددة' },
   '/awaiting-route': { title: 'بانتظار خط السير', subtitle: 'تحديد الوجهة والأجرة' },
   '/orders': { title: 'الطلبات', subtitle: 'إدارة الطلبات' },
+  '/deliveries': { title: 'تعيين التوصيل', subtitle: 'تعيين سائق وقاطرة لطلبات المؤسسة' },
+  '/accounting-fulfillment': { title: 'ترحيل التحميل والحسابات', subtitle: 'تثبيت الكمية الفعلية وربط كشوف الحساب' },
   '/pending-credit': { title: 'طلبات بانتظار الموافقة', subtitle: 'الموافقة على الطلبات الآجلة' },
   '/payments': { title: 'المدفوعات', subtitle: 'مراجعة الدفعات' },
   '/products': { title: 'المنتجات', subtitle: 'إدارة الأسمنت والأسعار' },

@@ -60,8 +60,8 @@ const submitPayment = async (userId, data) => {
     const paymentResult = await client.query(
       `INSERT INTO payments
        (order_id, method_id, amount_due, amount_transferred, transfer_date,
-        transaction_ref, status, reference_code)
-       VALUES ($1, $2, $3, $4, $5, $6, 'under_review', $7)
+        transaction_ref, receipt_url, receipt_path, status, reference_code)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'under_review', $9)
        RETURNING id, reference_code, status`,
       [
         order.id,
@@ -70,6 +70,8 @@ const submitPayment = async (userId, data) => {
         data.amountTransferred,
         data.transferDate,
         data.transactionRef || null,
+        data.receiptUrl || null,
+        data.receiptPath || null,
         referenceCode,
       ]
     );
@@ -107,7 +109,7 @@ const submitPayment = async (userId, data) => {
 const getMyPayments = async (userId) => {
   const result = await query(
     `SELECT p.id, p.reference_code, p.status, p.amount_due,
-            p.amount_transferred, p.transfer_date, p.transaction_ref,
+            p.amount_transferred, p.transfer_date, p.transaction_ref, p.receipt_url, p.receipt_path,
             p.rejection_reason, p.created_at,
             o.order_number
      FROM payments p
@@ -172,7 +174,7 @@ const approvePayment = async (paymentId, reviewerId) => {
 
     const pResult = await client.query(
       `SELECT p.id, p.order_id, p.status, p.amount_transferred,
-              o.status AS order_status
+              o.status AS order_status, o.fax_requested, o.delivery_type
        FROM payments p
        JOIN orders o ON o.id = p.order_id
        WHERE p.id = $1`,
@@ -216,6 +218,15 @@ const approvePayment = async (paymentId, reviewerId) => {
        VALUES ($1, $2, 'PAYMENT_APPROVED', $3, 'اعتماد الدفع')`,
       [payment.order_id, payment.order_status, reviewerId]
     );
+
+    if (payment.fax_requested) {
+      try {
+        const faxService = require('../faxes/fax.service');
+        await faxService.createFaxFromOrder(client, payment.order_id, reviewerId);
+      } catch (faxErr) {
+        if (faxErr.code !== 'FAX_NOT_READY') throw faxErr;
+      }
+    }
 
     await client.query('COMMIT');
     return { payment_id: paymentId, status: 'approved', order_status: 'PAYMENT_APPROVED' };

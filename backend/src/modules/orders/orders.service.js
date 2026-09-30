@@ -87,6 +87,34 @@ const createOrder = async (userId, data) => {
         err.status = 400;
         throw err;
       }
+      if (data.traderDriverId) {
+        const d = await client.query(
+          `SELECT id FROM drivers WHERE id = $1 AND owner_trader_id = $2`,
+          [data.traderDriverId, customerId]
+        );
+        if (!d.rows.length) {
+          const err = new Error('السائق المختار لا يتبع حسابك');
+          err.status = 403;
+          throw err;
+        }
+      }
+      if (data.traderVehicleId) {
+        const v = await client.query(
+          `SELECT id, owner_trader_id, current_driver_id FROM vehicles WHERE id = $1`,
+          [data.traderVehicleId]
+        );
+        if (!v.rows.length || v.rows[0].owner_trader_id !== customerId ||
+            (data.traderDriverId && v.rows[0].current_driver_id && v.rows[0].current_driver_id !== data.traderDriverId)) {
+          const err = new Error('القاطرة المختارة لا تتبع حسابك أو لا ترتبط بالسائق');
+          err.status = 403;
+          throw err;
+        }
+      }
+      if (data.faxRequested && (!data.traderDriverId || !data.traderVehicleId)) {
+        const err = new Error('للطلب مع الفاكس يجب اختيار السائق والقاطرة من حسابك');
+        err.status = 400;
+        throw err;
+      }
       const ex = await client.query(
         `SELECT id FROM customer_addresses WHERE customer_id = $1 AND is_default = true LIMIT 1`,
         [customerId]
@@ -175,17 +203,21 @@ const createOrder = async (userId, data) => {
         subtotal, discount_amount, shipping_amount, total_amount,
         paid_amount, remaining_amount, notes, created_by,
         delivery_type, trader_truck_plate, trader_driver_name, trader_driver_phone,
-        transport_unit)
+        transport_unit, trader_driver_id, trader_vehicle_id, fax_requested, transport_beneficiary,
+        transport_beneficiary_trader_id, factory_id)
        VALUES ($1, $2, $3, $4, 'ONLINE',
                NULL, 0, NULL, NULL, 0, NULL, $5, $6,
-               $7, $8, $9, $10, $11)
+               $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
        RETURNING id, order_number, status, created_at`,
       [
         orderNumber, customerId, addressId, initialStatus,
         data.notes || null, userId,
         data.deliveryType, data.traderTruckPlate || null,
         data.traderDriverName || null, data.traderDriverPhone || null,
-        items[0]?.unit || 'bag',
+        items[0]?.unit || 'bag', data.traderDriverId || null, data.traderVehicleId || null,
+        !!data.faxRequested, data.transportBeneficiary || null,
+        data.transportBeneficiary === 'trader' ? customerId : null,
+        items[0]?.sourceId || null,
       ]
     );
     const order = o.rows[0];
@@ -212,7 +244,7 @@ const createOrder = async (userId, data) => {
     );
 
     await client.query('COMMIT');
-    return { ...order, delivery_type: data.deliveryType };
+    return { ...order, delivery_type: data.deliveryType, fax_requested: !!data.faxRequested, transport_beneficiary: data.transportBeneficiary || null };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -277,12 +309,16 @@ const setOrderPricing = async (orderId, staffUserId, data) => {
       console.error('تعذّر فحص سقوف القيمة عند التسعير (تم تجاوزه):', ceilErr.message);
     }
 
+    const beneficiary = data.transportBeneficiary || order.transport_beneficiary || null;
     await client.query(
       `UPDATE orders SET
          subtotal = $1, shipping_amount = $2, total_amount = $3, remaining_amount = $3,
-         status = 'PENDING_PAYMENT_METHOD', priced_by = $4, priced_at = NOW(), updated_at = NOW()
-       WHERE id = $5`,
-      [subtotal, transportAmount, totalAmount, staffUserId, orderId]
+         status = 'PENDING_PAYMENT_METHOD', priced_by = $4, priced_at = NOW(),
+         transport_beneficiary = $5,
+         transport_beneficiary_trader_id = CASE WHEN $5 = 'trader' THEN customer_id ELSE NULL END,
+         updated_at = NOW()
+       WHERE id = $6`,
+      [subtotal, transportAmount, totalAmount, staffUserId, beneficiary, orderId]
     );
 
     await client.query(
@@ -329,33 +365,40 @@ const choosePaymentMethod = async (orderId, userId, data) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-
     const cust = await client.query(`SELECT id FROM customers WHERE user_id = $1`, [userId]);
     if (cust.rows.length === 0) { const e = new Error('العميل غير موجود'); e.status = 404; throw e; }
     const customerId = cust.rows[0].id;
-
     const o = await client.query(
       `SELECT * FROM orders WHERE id = $1 AND customer_id = $2 FOR UPDATE`,
       [orderId, customerId]
     );
-    if (o.rows.length === 0) { const e = new Error('الطلب غير موجود'); e.status = 404; throw e; }
+    if (!o.rows.length) { const e = new Error('الطلب غير موجود'); e.status = 404; throw e; }
     const order = o.rows[0];
     if (order.status !== 'PENDING_PAYMENT_METHOD') {
       const e = new Error('لا يمكن اختيار طريقة السداد في هذه الحالة'); e.status = 400; throw e;
     }
-    const totalAmount = parseFloat(order.total_amount);
-    const paymentTerms = data.paymentTerms;
 
+    let paymentTerms = data.paymentTerms;
+    if (paymentTerms === 'cash') paymentTerms = 'network_transfer';
+    if (paymentTerms === 'credit') paymentTerms = 'on_account';
+
+    const totalAmount = parseFloat(order.total_amount || 0);
     let paidNow = 0;
     let creditAmount = 0;
-    if (paymentTerms === 'cash') {
-      paidNow = totalAmount;
-    } else if (paymentTerms === 'credit') {
+
+    if (paymentTerms === 'on_account') {
       creditAmount = totalAmount;
     } else if (paymentTerms === 'partial') {
       paidNow = parseFloat(data.paidAmountNow || 0);
-      if (paidNow < 0 || paidNow > totalAmount) { const e = new Error('المبلغ المدفوع غير صحيح'); e.status = 400; throw e; }
+      if (!(paidNow > 0 && paidNow < totalAmount)) {
+        const e = new Error('الدفع الجزئي يجب أن يكون أكبر من صفر وأقل من الإجمالي'); e.status = 400; throw e;
+      }
       creditAmount = totalAmount - paidNow;
+    } else if (['network_transfer', 'e_wallet'].includes(paymentTerms)) {
+      paidNow = totalAmount;
+      creditAmount = 0;
+    } else {
+      const e = new Error('طريقة السداد غير مدعومة'); e.status = 400; throw e;
     }
 
     let creditCheck = null;
@@ -363,47 +406,31 @@ const choosePaymentMethod = async (orderId, userId, data) => {
       creditCheck = await checkCreditAvailability(client, customerId, creditAmount);
       if (!creditCheck.can_approve) {
         const e = new Error(`تجاوز الحد الائتماني. الرصيد: ${creditCheck.current_balance}، الحد: ${creditCheck.credit_limit}`);
-        e.status = 400; e.code = 'CREDIT_LIMIT_EXCEEDED'; e.data = creditCheck;
-        throw e;
+        e.status = 400; e.code = 'CREDIT_LIMIT_EXCEEDED'; e.data = creditCheck; throw e;
       }
     }
 
     const nextStatus = creditAmount > 0 ? 'PENDING_ADMIN_APPROVAL' : 'PENDING_PAYMENT';
-
     await client.query(
       `UPDATE orders SET payment_terms = $1, paid_amount_now = $2, credit_amount = $3,
          status = $4, updated_at = NOW() WHERE id = $5`,
       [paymentTerms, paidNow, creditAmount, nextStatus, orderId]
     );
 
-    if (creditAmount > 0) {
-      await ledgerService.addTransaction(client, {
-        customerId, orderId,
-        transactionType: 'purchase',
-        debit: creditAmount,
-        description: `طلب ${order.order_number} - ${paymentTerms === 'partial' ? 'دفع جزئي' : 'آجل'}`,
-        createdBy: userId,
-      });
-    }
-
     await client.query(
       `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
        VALUES ($1, 'PENDING_PAYMENT_METHOD', $2, $3, $4)`,
       [orderId, nextStatus, userId,
-        paymentTerms === 'credit' ? 'طلب آجل' : paymentTerms === 'partial' ? 'دفع جزئي' : 'طلب فوري']
+       paymentTerms === 'on_account' ? 'اختيار الدفع تحت الحساب' :
+       paymentTerms === 'partial' ? 'اختيار دفع جزئي' : `اختيار ${paymentTerms === 'e_wallet' ? 'محفظة إلكترونية' : 'تحويل شبكة'}`]
     );
 
     await client.query('COMMIT');
-    return {
-      id: orderId, status: nextStatus, payment_terms: paymentTerms,
-      paid_amount_now: paidNow, credit_amount: creditAmount, credit_check: creditCheck,
-    };
+    return { id: orderId, status: nextStatus, payment_terms: paymentTerms,
+      paid_amount_now: paidNow, credit_amount: creditAmount, credit_check: creditCheck };
   } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+    await client.query('ROLLBACK'); throw err;
+  } finally { client.release(); }
 };
 
 /**
@@ -598,16 +625,32 @@ const approveCreditOrder = async (orderId, adminId) => {
       err.status = 400;
       throw err;
     }
+    const full = await client.query(`SELECT customer_id, credit_amount, order_number FROM orders WHERE id = $1`, [orderId]);
+    const order = full.rows[0];
     await client.query(
-      `UPDATE orders SET status = 'PREPARING', credit_approved_by = $1,
-       credit_approved_at = NOW(), updated_at = NOW() WHERE id = $2`,
+      `UPDATE orders SET status = 'PAYMENT_APPROVED', credit_approved_by = $1,
+       credit_approved_at = NOW(), paid_amount = 0, remaining_amount = total_amount, updated_at = NOW() WHERE id = $2`,
       [adminId, orderId]
     );
+    if (parseFloat(order.credit_amount || 0) > 0) {
+      await ledgerService.addTransaction(client, {
+        customerId: order.customer_id, orderId, transactionType: 'purchase',
+        debit: parseFloat(order.credit_amount),
+        description: `طلب ${order.order_number} - تحت الحساب`, createdBy: adminId,
+      });
+    }
     await client.query(
       `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
-       VALUES ($1, 'PENDING_ADMIN_APPROVAL', 'PREPARING', $2, 'موافقة المدير')`,
+       VALUES ($1, 'PENDING_ADMIN_APPROVAL', 'PAYMENT_APPROVED', $2, 'اعتماد الدفع تحت الحساب')`,
       [orderId, adminId]
     );
+    // للطلب الذي اختار فاكسًا وسائقًا تابعًا للتاجر: أنشئ طلب الفاكس تلقائيًا بعد الاعتماد.
+    try {
+      const faxService = require('../faxes/fax.service');
+      await faxService.createFaxFromOrder(client, orderId, adminId);
+    } catch (faxErr) {
+      if (faxErr.code !== 'FAX_NOT_READY') throw faxErr;
+    }
     await client.query('COMMIT');
     return { id: orderId, status: 'PREPARING' };
   } catch (err) {
@@ -747,6 +790,25 @@ const getOrderById = async (orderId, userId = null, isAdmin = false) => {
     [orderId]
   );
   order.items = its.rows;
+  const [fax, posting, deliveries] = await Promise.all([
+    query(`SELECT f.id,f.fax_number,f.status,f.requested_quantity,f.approved_quantity,f.loaded_quantity,
+                  f.quantity_discrepancy,f.factory_entered_at,f.issued_at,f.used_at,
+                  s.name_ar AS factory_name,d.full_name AS driver_name,v.plate_number
+           FROM loading_faxes f
+           LEFT JOIN product_sources s ON s.id=f.factory_id
+           LEFT JOIN drivers d ON d.id=f.driver_id
+           LEFT JOIN vehicles v ON v.id=f.vehicle_id
+           WHERE f.order_id=$1 ORDER BY f.requested_at DESC LIMIT 1`, [orderId]),
+    query(`SELECT id,loaded_quantity,customer_debit,customer_payment_credit,driver_transport_debit,
+                  trader_transport_amount,posted_at,notes FROM order_accounting_postings WHERE order_id=$1`, [orderId]),
+    query(`SELECT d.id,d.trip_number,d.status,d.driver_id,d.vehicle_id,d.started_at,d.delivered_at,
+                  dr.full_name AS driver_name,v.plate_number FROM deliveries d
+           LEFT JOIN drivers dr ON dr.id=d.driver_id LEFT JOIN vehicles v ON v.id=d.vehicle_id
+           WHERE d.order_id=$1 ORDER BY d.created_at ASC`, [orderId]),
+  ]);
+  order.fax = fax.rows[0] || null;
+  order.accounting_posting = posting.rows[0] || null;
+  order.deliveries = deliveries.rows;
   return order;
 };
 

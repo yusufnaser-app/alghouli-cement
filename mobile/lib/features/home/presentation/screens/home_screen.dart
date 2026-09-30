@@ -4,6 +4,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../offers/presentation/screens/offers_screen.dart';
 import '../../../products/presentation/screens/product_details_screen.dart';
+import '../../../orders/presentation/screens/trader_purchase_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -117,6 +118,35 @@ class _HomeScreenState extends State<HomeScreen> {
                   )
                 : Column(
                     children: [
+                      // المسار الجديد للتاجر — منفصل عن السلة القديمة للأفراد
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                        child: InkWell(
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TraderPurchaseScreen())),
+                          borderRadius: BorderRadius.circular(16),
+                          child: Container(
+                            padding: const EdgeInsets.all(18),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.request_quote, color: Colors.white, size: 34),
+                                SizedBox(width: 12),
+                                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                  Text('طلب شراء أسمنت', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                                  SizedBox(height: 4),
+                                  Text('للتاجر — بدون إدخال السعر', style: TextStyle(color: Colors.white70)),
+                                ])),
+                                Icon(Icons.arrow_forward_ios, color: Colors.white, size: 18),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // السلة القديمة تبقى للأفراد
                       // شريط البحث + الفلاتر
                       Container(
                         color: Colors.white,

@@ -5,6 +5,7 @@ import { openPrintable } from '../../utils/files';
 const statusAr = {
   PENDING_PRICING: 'بانتظار التسعير',
   PENDING_PAYMENT_METHOD: 'بانتظار اختيار طريقة السداد',
+  PENDING_ADMIN_APPROVAL: 'بانتظار موافقة المدير',
   PENDING_PAYMENT: 'بانتظار الدفع',
   RECEIPT_UPLOADED: 'تم رفع الإيصال',
   PENDING_PAYMENT_REVIEW: 'بانتظار مراجعة الدفع',
@@ -20,7 +21,7 @@ const statusAr = {
 };
 
 const statusColor = (s) => {
-  if (['PENDING_PRICING', 'PENDING_PAYMENT_METHOD', 'PENDING_PAYMENT', 'PENDING_PAYMENT_REVIEW', 'RECEIPT_UPLOADED'].includes(s)) return 'badge-pending';
+  if (['PENDING_PRICING', 'PENDING_PAYMENT_METHOD', 'PENDING_ADMIN_APPROVAL', 'PENDING_PAYMENT', 'PENDING_PAYMENT_REVIEW', 'RECEIPT_UPLOADED'].includes(s)) return 'badge-pending';
   if (['PAYMENT_APPROVED', 'PREPARING', 'DRIVER_ASSIGNED', 'LOADED'].includes(s)) return 'badge-approved';
   if (s === 'IN_TRANSIT') return 'badge-transit';
   if (['DELIVERED', 'COMPLETED'].includes(s)) return 'badge-completed';
@@ -246,7 +247,8 @@ function PricingModal({ order, onClose, onSaved }) {
   const [prices, setPrices] = useState(
     Object.fromEntries((order.items || []).map((it) => [it.id, { unitPrice: '', discount: '' }]))
   );
-  const [transportAmount, setTransportAmount] = useState(order.delivery_type === 'alghouli_delivery' ? '' : '0');
+  const [transportAmount, setTransportAmount] = useState(order.shipping_amount != null ? String(order.shipping_amount) : '0');
+  const [transportBeneficiary, setTransportBeneficiary] = useState(order.transport_beneficiary || 'driver');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -279,6 +281,7 @@ function PricingModal({ order, onClose, onSaved }) {
           discount: parseFloat(prices[it.id].discount) || 0,
         })),
         transportAmount: parseFloat(transportAmount) || 0,
+        transportBeneficiary,
       });
       onSaved();
     } catch (err) {
@@ -321,13 +324,17 @@ function PricingModal({ order, onClose, onSaved }) {
             </table>
           </div>
           <div className="form-group" style={{ marginTop: 12 }}>
-            <label className="form-label">أجرة النقل (ريال)</label>
+            <label className="form-label">أجرة النقل (ريال) — اختيارية</label>
             <input type="number" className="form-input" value={transportAmount}
-              onChange={(e) => setTransportAmount(e.target.value)}
-              disabled={order.delivery_type !== 'alghouli_delivery'} />
-            {order.delivery_type !== 'alghouli_delivery' && (
-              <p style={{ fontSize: 12, color: '#666' }}>العميل يستلم بقاطرته الخاصة — لا أجرة نقل على المؤسسة.</p>
-            )}
+              onChange={(e) => setTransportAmount(e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">تُقيد أجور النقل لحساب</label>
+            <select className="form-select" value={transportBeneficiary}
+              onChange={(e) => setTransportBeneficiary(e.target.value)}>
+              <option value="driver">السائق</option>
+              <option value="trader">التاجر</option>
+            </select>
           </div>
           <div style={{ padding: 14, background: '#E8F5E9', borderRadius: 10, marginTop: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 18 }}>

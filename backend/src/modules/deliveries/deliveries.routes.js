@@ -6,7 +6,9 @@ const router = express.Router();
 
 router.use(authenticate);
 
-router.post('/order/:orderId/assign', requireRoles('transport'), controller.assign);
+router.get('/pending-assignment', requireRoles('transport', 'admin'), controller.pendingAssignment);
+
+router.post('/order/:orderId/assign', requireRoles('transport', 'admin'), controller.assign);
 router.get('/order/:orderId', controller.listByOrder);
 router.patch('/:id/status', requireRoles('transport', 'driver'), controller.updateStatus);
 

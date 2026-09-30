@@ -93,6 +93,44 @@ const assignDriver = async (orderId, data, assignedBy) => {
       [orderId]
     );
 
+    // إذا طلب التاجر الفاكس مع توصيل مؤسسة الغولي، يتم إنشاؤه تلقائيًا
+    // بعد تعيين السائق والقاطرة؛ الموظف لا يعيد إدخال بيانات الطلب يدويًا.
+    const faxOrder = await client.query(
+      `SELECT o.fax_requested, o.fax_id, o.customer_id, o.transport_beneficiary,
+              oi.quantity, oi.source_id, d.driver_type
+       FROM orders o
+       JOIN order_items oi ON oi.order_id = o.id
+       JOIN drivers d ON d.id = $2
+       WHERE o.id = $1
+       ORDER BY oi.id ASC LIMIT 1`,
+      [orderId, data.driverId]
+    );
+    if (faxOrder.rows[0]?.fax_requested && !faxOrder.rows[0]?.fax_id) {
+      const f = faxOrder.rows[0];
+      const existingFax = await client.query(
+        `SELECT id FROM loading_faxes WHERE order_id = $1 AND status IN ('REQUESTED','APPROVED','ISSUED','USED') LIMIT 1`,
+        [orderId]
+      );
+      if (!existingFax.rows.length) {
+        const fax = await client.query(
+          `INSERT INTO loading_faxes
+           (order_id, driver_id, vehicle_id, factory_id, requested_quantity, status,
+            requested_at, created_by, requested_by_user_id, trader_id, driver_type_snapshot,
+            is_managed_by_institution, transport_payer, transport_payer_trader_id)
+           VALUES ($1,$2,$3,$4,$5,'REQUESTED',NOW(),$6,$7,$8,$9,TRUE,$10,$11)
+           RETURNING id`,
+          [orderId, data.driverId, data.vehicleId,
+           (await client.query(`SELECT source_id FROM order_items WHERE order_id = $1 ORDER BY id ASC LIMIT 1`, [orderId])).rows[0].source_id,
+           f.quantity, assignedBy,
+           (await client.query(`SELECT user_id FROM customers WHERE id = $1`, [f.customer_id])).rows[0].user_id,
+           f.customer_id, f.driver_type || 'institution_driver',
+           f.transport_beneficiary === 'trader' ? 'trader' : 'institution',
+           f.transport_beneficiary === 'trader' ? f.customer_id : null]
+        );
+        await client.query(`UPDATE orders SET fax_id = $1 WHERE id = $2`, [fax.rows[0].id, orderId]);
+      }
+    }
+
     await client.query(
       `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
        VALUES ($1, $2, 'DRIVER_ASSIGNED', $3, 'تعيين السائق')`,
@@ -107,6 +145,29 @@ const assignDriver = async (orderId, data, assignedBy) => {
   } finally {
     client.release();
   }
+};
+
+const listPendingAssignment = async () => {
+  const result = await query(`
+    SELECT o.id, o.order_number, o.status, o.total_amount, o.shipping_amount,
+           o.fax_requested, o.created_at,
+           u.full_name AS customer_name, u.phone AS customer_phone,
+           s.name_ar AS factory_name,
+           oi.quantity, oi.unit, p.name_ar AS product_name,
+           a.governorate, a.area, a.address_text
+    FROM orders o
+    JOIN customers c ON c.id = o.customer_id
+    JOIN users u ON u.id = c.user_id
+    JOIN order_items oi ON oi.order_id = o.id
+    JOIN products p ON p.id = oi.product_id
+    JOIN product_sources s ON s.id = oi.source_id
+    LEFT JOIN customer_addresses a ON a.id = o.address_id
+    WHERE o.delivery_type = 'alghouli_delivery'
+      AND o.status = 'PAYMENT_APPROVED'
+      AND NOT EXISTS (SELECT 1 FROM deliveries d WHERE d.order_id = o.id)
+    ORDER BY o.created_at ASC
+  `);
+  return result.rows;
 };
 
 const updateDeliveryStatus = async (deliveryId, status, userId, notes) => {
@@ -184,4 +245,4 @@ const listByOrder = async (orderId) => {
   return result.rows;
 };
 
-module.exports = { assignDriver, updateDeliveryStatus, listByOrder };
+module.exports = { assignDriver, updateDeliveryStatus, listByOrder, listPendingAssignment };

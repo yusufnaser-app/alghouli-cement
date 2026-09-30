@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/widgets/primary_button.dart';
 import '../../data/payment_service.dart';
@@ -28,6 +30,7 @@ class _UploadReceiptScreenState extends State<UploadReceiptScreen> {
   bool _loading = false;
   bool _loadingMethods = true;
   String? _error;
+  XFile? _receiptImage;
 
   @override
   void initState() {
@@ -46,8 +49,9 @@ class _UploadReceiptScreenState extends State<UploadReceiptScreen> {
   Future<void> _loadMethods() async {
     try {
       final list = await _service.methods();
+      final traderMethods = list.where((m) => ['network_transfer', 'e_wallet'].contains(m['code'])).toList();
       setState(() {
-        _methods = list;
+        _methods = traderMethods;
         if (list.isNotEmpty) _selectedMethodId = list.first['id'];
       });
     } catch (e) {
@@ -65,6 +69,15 @@ class _UploadReceiptScreenState extends State<UploadReceiptScreen> {
       lastDate: DateTime.now(),
     );
     if (picked != null) setState(() => _transferDate = picked);
+  }
+
+  Future<void> _pickReceipt(ImageSource source) async {
+    try {
+      final image = await ImagePicker().pickImage(source: source, imageQuality: 80, maxWidth: 1600);
+      if (image != null && mounted) setState(() => _receiptImage = image);
+    } catch (e) {
+      if (mounted) setState(() => _error = 'تعذر اختيار صورة الإيصال');
+    }
   }
 
   Future<void> _submit() async {
@@ -86,13 +99,20 @@ class _UploadReceiptScreenState extends State<UploadReceiptScreen> {
 
     try {
       final dateStr = '${_transferDate.year}-${_transferDate.month.toString().padLeft(2, '0')}-${_transferDate.day.toString().padLeft(2, '0')}';
+      if (_receiptImage == null) {
+        setState(() => _error = 'صورة إيصال التحويل مطلوبة');
+        return;
+      }
 
+      final uploaded = await _service.uploadReceipt(_receiptImage!.path);
       await _service.submit(
         orderId: widget.orderId,
         methodId: _selectedMethodId!,
         amount: amount,
         transferDate: dateStr,
         transactionRef: _refController.text.trim(),
+        receiptUrl: uploaded['url']?.toString(),
+        receiptPath: uploaded['path']?.toString(),
       );
 
       if (!mounted) return;
@@ -183,6 +203,33 @@ class _UploadReceiptScreenState extends State<UploadReceiptScreen> {
                     decoration: const InputDecoration(
                       hintText: 'TXN-123456',
                       prefixIcon: Icon(Icons.tag),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _lbl('صورة إيصال التحويل *'),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.divider),
+                    ),
+                    child: Column(
+                      children: [
+                        if (_receiptImage != null)
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.file(File(_receiptImage!.path), height: 180, fit: BoxFit.cover),
+                          ),
+                        if (_receiptImage != null) const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(child: OutlinedButton.icon(onPressed: () => _pickReceipt(ImageSource.camera), icon: const Icon(Icons.camera_alt), label: const Text('الكاميرا'))),
+                            const SizedBox(width: 8),
+                            Expanded(child: OutlinedButton.icon(onPressed: () => _pickReceipt(ImageSource.gallery), icon: const Icon(Icons.photo_library), label: const Text('المعرض'))),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 16),

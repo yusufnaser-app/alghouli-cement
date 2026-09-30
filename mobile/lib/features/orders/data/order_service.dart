@@ -12,6 +12,10 @@ class OrderService {
     String? traderTruckPlate,
     String? traderDriverName,
     String? traderDriverPhone,
+    String? traderDriverId,
+    String? traderVehicleId,
+    bool faxRequested = false,
+    String? transportBeneficiary,
   }) async {
     try {
       final body = <String, dynamic>{
@@ -28,6 +32,10 @@ class OrderService {
         body['traderDriverName'] = traderDriverName;
       if (traderDriverPhone != null && traderDriverPhone.isNotEmpty)
         body['traderDriverPhone'] = traderDriverPhone;
+      if (traderDriverId != null) body['traderDriverId'] = traderDriverId;
+      if (traderVehicleId != null) body['traderVehicleId'] = traderVehicleId;
+      body['faxRequested'] = faxRequested;
+      if (transportBeneficiary != null) body['transportBeneficiary'] = transportBeneficiary;
 
       final res = await _client.post('/orders', data: body);
       return res.data['data'] as Map<String, dynamic>;
@@ -39,7 +47,7 @@ class OrderService {
   /// اختيار طريقة السداد بعد أن يحدد الموظف السعر (الحالة PENDING_PAYMENT_METHOD).
   Future<Map<String, dynamic>> choosePayment({
     required String orderId,
-    required String paymentTerms, // cash | credit | partial
+    required String paymentTerms, // network_transfer | e_wallet | on_account
     double? paidAmountNow,
   }) async {
     try {

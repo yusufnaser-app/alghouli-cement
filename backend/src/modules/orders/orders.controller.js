@@ -18,6 +18,10 @@ const createSchema = z.object({
   traderTruckPlate: z.string().max(30).optional(),
   traderDriverName: z.string().max(150).optional(),
   traderDriverPhone: z.string().max(20).optional(),
+  traderDriverId: z.string().uuid().optional(),
+  traderVehicleId: z.string().uuid().optional(),
+  faxRequested: z.boolean().optional(),
+  transportBeneficiary: z.enum(['driver', 'trader']).optional(),
 }).passthrough();
 
 const pricingSchema = z.object({
@@ -27,6 +31,7 @@ const pricingSchema = z.object({
     discount: z.number().min(0).optional(),
   })).min(1),
   transportAmount: z.number().min(0).optional(),
+  transportBeneficiary: z.enum(['driver', 'trader']).optional(),
 });
 
 const groupOrderSchema = z.object({
@@ -42,7 +47,7 @@ const groupOrderSchema = z.object({
 });
 
 const paymentMethodSchema = z.object({
-  paymentTerms: z.enum(['cash', 'credit', 'partial']),
+  paymentTerms: z.enum(['network_transfer', 'e_wallet', 'on_account', 'cash', 'credit', 'partial']),
   paidAmountNow: z.number().min(0).optional(),
 });
 

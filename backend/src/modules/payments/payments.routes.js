@@ -12,9 +12,9 @@ router.use(authenticate);
 
 router.post('/', controller.submit);
 router.get('/me', controller.myPayments);
-router.get('/pending', requireRoles('accountant'), controller.pending);
+router.get('/pending', requireRoles('accountant', 'admin'), controller.pending);
 router.get('/:id', controller.getById);
-router.patch('/:id/approve', requireRoles('accountant'), controller.approve);
-router.patch('/:id/reject', requireRoles('accountant'), controller.reject);
+router.patch('/:id/approve', requireRoles('accountant', 'admin'), controller.approve);
+router.patch('/:id/reject', requireRoles('accountant', 'admin'), controller.reject);
 
 module.exports = router;

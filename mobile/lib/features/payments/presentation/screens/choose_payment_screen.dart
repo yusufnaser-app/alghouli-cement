@@ -26,7 +26,7 @@ class _ChoosePaymentScreenState extends State<ChoosePaymentScreen> {
   final _walletService = WalletService();
   final _partialController = TextEditingController();
 
-  String _paymentTerms = 'cash';
+  String _paymentTerms = 'network_transfer';
   CustomerSummary? _summary;
   bool _loading = false;
   bool _loadingSummary = true;
@@ -104,7 +104,7 @@ class _ChoosePaymentScreenState extends State<ChoosePaymentScreen> {
         Navigator.pop(context, true);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('تم إرسال طلب السداد الآجل — بانتظار موافقة المدير'),
+            content: Text('تم إرسال طلب الدفع تحت الحساب — بانتظار موافقة المؤسسة'),
             backgroundColor: AppColors.warning,
             duration: Duration(seconds: 4),
           ),
@@ -120,7 +120,7 @@ class _ChoosePaymentScreenState extends State<ChoosePaymentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isCredit = _paymentTerms != 'cash';
+    final isCredit = _paymentTerms == 'on_account';
     final currentBalance = _summary?.currentBalance ?? 0;
     final creditLimit = _summary?.creditLimit ?? 0;
 
@@ -179,9 +179,40 @@ class _ChoosePaymentScreenState extends State<ChoosePaymentScreen> {
               const Text('طريقة السداد',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
-              _option('cash', '💵 دفع فوري', 'رفع إيصال التحويل الآن', Icons.payments),
-              _option('partial', '➗ دفع جزئي', 'تدفع جزءًا الآن والباقي آجل', Icons.percent),
-              _option('credit', '📝 دفع آجل', 'يحتاج موافقة المدير', Icons.schedule),
+              _option('network_transfer', '🏦 تحويل عبر شبكة الصرافة', 'التحويل إلى الحساب المحدد ثم رفع الإيصال', Icons.account_balance),
+              _option('e_wallet', '📱 محفظة إلكترونية', 'الإيداع في المحفظة ثم رفع الإيصال', Icons.account_balance_wallet),
+              _option('on_account', '📝 الدفع تحت الحساب', 'يحتاج مراجعة واعتماد المؤسسة', Icons.receipt_long),
+
+              if (_paymentTerms == 'network_transfer')
+                Container(
+                  margin: const EdgeInsets.only(top: 8),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.info.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('بيانات التحويل', style: TextStyle(fontWeight: FontWeight.bold)),
+                      SizedBox(height: 6),
+                      Text('اسم المستفيد: عمار حسين مقبل مطر الغولي'),
+                      SizedBox(height: 4),
+                      Text('بعد التحويل أرفق رقم العملية/الإيصال ليتم اعتماد الدفع.'),
+                    ],
+                  ),
+                ),
+
+              if (_paymentTerms == 'e_wallet')
+                Container(
+                  margin: const EdgeInsets.only(top: 8),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.info.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text('المحفظة الإلكترونية: أتمم الإيداع ثم ارفع إيصال العملية من شاشة الدفع.'),
+                ),
 
               if (_paymentTerms == 'partial') ...[
                 const SizedBox(height: 12),
@@ -216,8 +247,8 @@ class _ChoosePaymentScreenState extends State<ChoosePaymentScreen> {
 
               const SizedBox(height: 24),
               PrimaryButton(
-                text: _paymentTerms == 'credit' ? 'إرسال طلب آجل' : 'متابعة',
-                icon: _paymentTerms == 'credit' ? Icons.send : Icons.check_circle,
+                text: _paymentTerms == 'on_account' ? 'إرسال طلب تحت الحساب' : 'متابعة الدفع',
+                icon: _paymentTerms == 'on_account' ? Icons.send : Icons.check_circle,
                 isLoading: _loading,
                 onPressed: _submit,
               ),
