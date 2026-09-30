@@ -48,7 +48,9 @@ jobs:
           cat android/app/google-services.json | head -10
 
       - name: Patch gradle for Firebase
-        run: python3 scripts/patch-firebase.py
+        run: |
+          cd mobile
+          python3 ../scripts/patch-firebase.py
 
       - name: Build APK
         run: |
