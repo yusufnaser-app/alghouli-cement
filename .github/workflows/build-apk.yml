@@ -25,7 +25,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.0'
+          flutter-version: '3.29.2'
           channel: 'stable'
           cache: true
 
@@ -38,13 +38,6 @@ jobs:
         run: |
           cd mobile
           flutter create --platforms=android --org com.alghouli --project-name alghouli_app .
-
-      - name: Set Android compileSdk
-        run: |
-          cd mobile
-          sed -i "s/compileSdk = flutter.compileSdkVersion/compileSdk = 35/; s/compileSdk flutter.compileSdkVersion/compileSdk 35/; s/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 35/" android/app/build.gradle
-          echo "--- Verify compileSdk ---"
-          grep -n "compileSdk" android/app/build.gradle
 
       - name: Copy google-services.json
         run: |
