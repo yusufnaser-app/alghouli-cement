@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../data/order_service.dart';
 import '../../../payments/presentation/screens/upload_receipt_screen.dart';
+import '../../../payments/presentation/screens/choose_payment_screen.dart';
 
 class OrderDetailsScreen extends StatefulWidget {
   final String orderId;
@@ -48,6 +49,8 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
 
   String _statusAr(String s) {
     const map = {
+      'PENDING_PRICING': 'بانتظار تحديد السعر',
+      'PENDING_PAYMENT_METHOD': 'بانتظار اختيار طريقة السداد',
       'PENDING_PAYMENT': 'بانتظار الدفع',
       'RECEIPT_UPLOADED': 'تم رفع الإيصال',
       'PENDING_PAYMENT_REVIEW': 'بانتظار مراجعة الدفع',
@@ -65,7 +68,8 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   }
 
   Color _statusColor(String s) {
-    if (s == 'PENDING_PAYMENT' || s == 'PENDING_PAYMENT_REVIEW' ||
+    if (s == 'PENDING_PRICING' || s == 'PENDING_PAYMENT_METHOD' ||
+        s == 'PENDING_PAYMENT' || s == 'PENDING_PAYMENT_REVIEW' ||
         s == 'RECEIPT_UPLOADED') {
       return AppColors.statusPending;
     }
@@ -101,6 +105,8 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     final o = _order!;
     final status = o['status'] ?? '';
     final canPay = status == 'PENDING_PAYMENT';
+    final canChoosePayment = status == 'PENDING_PAYMENT_METHOD';
+    final hasPrice = o['total_amount'] != null;
     final items = (o['items'] as List?) ?? [];
 
     return SingleChildScrollView(
@@ -163,7 +169,9 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                                         fontWeight: FontWeight.bold,
                                         fontSize: 13)),
                                 Text(
-                                  '${item['quantity']} ${item['unit'] == 'ton' ? 'طن' : 'كيس'} × ${_fmt(item['unit_price'])}',
+                                  item['unit_price'] != null
+                                      ? '${item['quantity']} ${item['unit'] == 'ton' ? 'طن' : 'كيس'} × ${_fmt(item['unit_price'])}'
+                                      : '${item['quantity']} ${item['unit'] == 'ton' ? 'طن' : 'كيس'}',
                                   style: const TextStyle(
                                       fontSize: 11,
                                       color: AppColors.textSecondary),
@@ -171,26 +179,50 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                               ],
                             ),
                           ),
-                          Text('${_fmt(item['line_total'])} ريال',
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold)),
+                          if (item['line_total'] != null)
+                            Text('${_fmt(item['line_total'])} ريال',
+                                style:
+                                    const TextStyle(fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ))
                 .toList(),
           ),
 
-          // الملخص المالي
-          _section('الملخص المالي', [
-            _row('الإجمالي الفرعي', '${_fmt(o['subtotal'])} ريال'),
-            _row('الخصم', '${_fmt(o['discount_amount'])} ريال'),
-            _row('النقل', '${_fmt(o['shipping_amount'])} ريال'),
-            const Divider(height: 16),
-            _row('الإجمالي', '${_fmt(o['total_amount'])} ريال', bold: true),
-            _row('المدفوع', '${_fmt(o['paid_amount'])} ريال'),
-            _row('المتبقي', '${_fmt(o['remaining_amount'])} ريال',
-                color: AppColors.danger),
-          ]),
+          // الملخص المالي — لا يظهر إطلاقًا قبل أن يحدد الموظف السعر
+          if (hasPrice)
+            _section('الملخص المالي', [
+              _row('الإجمالي الفرعي', '${_fmt(o['subtotal'])} ريال'),
+              _row('الخصم', '${_fmt(o['discount_amount'])} ريال'),
+              _row('النقل', '${_fmt(o['shipping_amount'])} ريال'),
+              const Divider(height: 16),
+              _row('الإجمالي', '${_fmt(o['total_amount'])} ريال', bold: true),
+              _row('المدفوع', '${_fmt(o['paid_amount'])} ريال'),
+              _row('المتبقي', '${_fmt(o['remaining_amount'])} ريال',
+                  color: AppColors.danger),
+            ])
+          else
+            Container(
+              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.warning.withOpacity(0.4)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.hourglass_top, color: AppColors.warning),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'طلبك قيد المراجعة — سيصلك إشعار بالسعر قريبًا',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
 
           if (o['notes'] != null && o['notes'].toString().isNotEmpty)
             _section('ملاحظات', [
@@ -198,6 +230,34 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
             ]),
 
           const SizedBox(height: 24),
+
+          // زر اختيار طريقة السداد (بعد معرفة السعر لأول مرة)
+          if (canChoosePayment)
+            ElevatedButton.icon(
+              onPressed: () async {
+                final result = await Navigator.push<bool>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ChoosePaymentScreen(
+                      orderId: widget.orderId,
+                      totalAmount:
+                          double.tryParse(o['total_amount'].toString()) ?? 0,
+                    ),
+                  ),
+                );
+                if (result == true || result == null) _load();
+              },
+              icon: const Icon(Icons.price_check),
+              label: const Text('اختيار طريقة السداد'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.success,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 56),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
 
           // زر الدفع
           if (canPay)

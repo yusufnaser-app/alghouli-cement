@@ -39,6 +39,9 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
 
   String _statusAr(String s) {
     const map = {
+      'PENDING_PRICING': 'بانتظار تحديد السعر',
+      'PENDING_PAYMENT_METHOD': 'بانتظار اختيار طريقة السداد',
+      'PENDING_ADMIN_APPROVAL': 'بانتظار موافقة المدير',
       'PENDING_PAYMENT': 'بانتظار الدفع',
       'RECEIPT_UPLOADED': 'تم رفع الإيصال',
       'PENDING_PAYMENT_REVIEW': 'بانتظار المراجعة',
@@ -56,7 +59,9 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
   }
 
   Color _statusColor(String s) {
-    if (s == 'PENDING_PAYMENT' || s == 'PENDING_PAYMENT_REVIEW' ||
+    if (s == 'PENDING_PRICING' || s == 'PENDING_PAYMENT_METHOD' ||
+        s == 'PENDING_ADMIN_APPROVAL' || s == 'PENDING_PAYMENT' ||
+        s == 'PENDING_PAYMENT_REVIEW' ||
         s == 'RECEIPT_UPLOADED') return AppColors.statusPending;
     if (s == 'PAYMENT_APPROVED' || s == 'PREPARING' ||
         s == 'DRIVER_ASSIGNED' || s == 'LOADED') return AppColors.statusApproved;

@@ -406,6 +406,167 @@ const choosePaymentMethod = async (orderId, userId, data) => {
   }
 };
 
+/**
+ * الطلب الجماعي للتاجر (بند 27): طلب واحد لمصنع/نوع أسمنت، بقاطرات متعددة —
+ * كل قاطرة تصبح طلبًا مستقلاً كاملاً (يُسعَّر ويُسدَّد بشكل منفصل)، مرتبطة
+ * جميعها برقم مجموعة واحد GR-YYYY-XXXXXX. لا يُنشئ نظام طلبات ثانٍ — يعيد
+ * استخدام نفس جدول orders ونفس دورة العمل (PENDING_PRICING ثم...).
+ */
+const createGroupOrder = async (userId, data) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const cust = await client.query(
+      `SELECT id, customer_type, governorate, area FROM customers WHERE user_id = $1`,
+      [userId]
+    );
+    if (cust.rows.length === 0) { const e = new Error('العميل غير موجود'); e.status = 404; throw e; }
+    const customer = cust.rows[0];
+    const customerId = customer.id;
+    if (!['trader', 'distributor'].includes(customer.customer_type)) {
+      const e = new Error('الطلب الجماعي متاح للتجار والموزعين فقط'); e.status = 403; throw e;
+    }
+    if (!Array.isArray(data.trucks) || data.trucks.length < 2) {
+      const e = new Error('الطلب الجماعي يحتاج قاطرتين على الأقل (لطلب قاطرة واحدة استخدم الطلب العادي)');
+      e.status = 400; throw e;
+    }
+
+    const p = await client.query(
+      `SELECT p.id, p.source_id, p.packaging_type, p.name_ar,
+              COALESCE(i.unit, CASE WHEN p.packaging_type = 'bagged' THEN 'bag' ELSE 'ton' END) AS unit,
+              COALESCE(i.available_qty, 0) AS available_qty
+       FROM products p LEFT JOIN inventory i ON i.product_id = p.id
+       WHERE p.id = $1`,
+      [data.productId]
+    );
+    if (p.rows.length === 0) { const e = new Error('المنتج غير موجود'); e.status = 404; throw e; }
+    const product = p.rows[0];
+
+    const totalQuantity = data.trucks.reduce((s, t) => s + parseFloat(t.quantity || 0), 0);
+    if (parseFloat(product.available_qty) < totalQuantity) {
+      const e = new Error(`الكمية الإجمالية غير كافية من: ${product.name_ar}`);
+      e.status = 400; e.code = 'INSUFFICIENT_STOCK'; throw e;
+    }
+
+    // فحص سقف الكمية على إجمالي المجموعة دفعة واحدة (بدل فحص كل طلب منفرد لاحقًا
+    // بلا رؤية بعضها البعض ضمن نفس المعاملة)
+    try {
+      if (product.unit === 'bag') {
+        const check = await ceilingsService.checkOrderCeilings(client, {
+          customerId, sourceId: product.source_id, categoryId: null,
+          requestedBags: totalQuantity, requestedAmount: 0,
+        });
+        if (check.exceeded) {
+          const e = new Error('تجاوزت الكمية الإجمالية للمجموعة السقف المسموح به.');
+          e.status = 400; e.code = 'CEILING_EXCEEDED'; e.data = check.results.filter((r) => r.exceeded);
+          throw e;
+        }
+      }
+    } catch (ceilErr) {
+      if (ceilErr.code === 'CEILING_EXCEEDED') throw ceilErr;
+      console.error('تحذير: تعذّر فحص سقوف الطلب الجماعي (تم تجاوز الفحص):', ceilErr.message);
+    }
+
+    let addressId = data.addressId || null;
+    if (!addressId) {
+      const ex = await client.query(
+        `SELECT id FROM customer_addresses WHERE customer_id = $1 AND is_default = true LIMIT 1`,
+        [customerId]
+      );
+      if (ex.rows.length > 0) {
+        addressId = ex.rows[0].id;
+      } else {
+        const n = await client.query(
+          `INSERT INTO customer_addresses (customer_id, label, governorate, area, address_text, is_default)
+           VALUES ($1, 'افتراضي', $2, $3, 'يُحدد', true) RETURNING id`,
+          [customerId, customer.governorate || 'صنعاء', customer.area || '']
+        );
+        addressId = n.rows[0].id;
+      }
+    }
+
+    const year = new Date().getFullYear();
+    const gCount = await client.query(`SELECT COUNT(*) FROM order_groups WHERE group_number LIKE $1`, [`GR-${year}-%`]);
+    const groupNumber = `GR-${year}-${String(parseInt(gCount.rows[0].count, 10) + 1).padStart(6, '0')}`;
+    const g = await client.query(
+      `INSERT INTO order_groups (group_number, customer_id) VALUES ($1, $2) RETURNING id`,
+      [groupNumber, customerId]
+    );
+    const groupId = g.rows[0].id;
+
+    const createdOrders = [];
+    for (const truck of data.trucks) {
+      const qty = parseFloat(truck.quantity);
+      if (!(qty > 0)) { const e = new Error('كمية غير صحيحة لإحدى القاطرات'); e.status = 400; throw e; }
+      if (!truck.truckPlate || !truck.driverName) {
+        const e = new Error('رقم القاطرة واسم السائق مطلوبان لكل قاطرة في المجموعة'); e.status = 400; throw e;
+      }
+
+      const orderNumber = await generateOrderNumber();
+      const o = await client.query(
+        `INSERT INTO orders
+         (order_number, customer_id, address_id, status, source,
+          subtotal, discount_amount, shipping_amount, total_amount,
+          paid_amount, remaining_amount, notes, created_by,
+          delivery_type, trader_truck_plate, trader_driver_name, trader_driver_phone,
+          transport_unit, group_id)
+         VALUES ($1, $2, $3, 'PENDING_PRICING', 'ONLINE',
+                 NULL, 0, NULL, NULL, 0, NULL, $4, $5,
+                 'trader_pickup', $6, $7, $8, $9, $10)
+         RETURNING id, order_number, status, created_at`,
+        [
+          orderNumber, customerId, addressId, data.notes || null, userId,
+          truck.truckPlate, truck.driverName, truck.driverPhone || null,
+          product.unit, groupId,
+        ]
+      );
+      const order = o.rows[0];
+
+      await client.query(
+        `INSERT INTO order_items (order_id, product_id, source_id, packaging_type, quantity, unit, unit_price, discount, line_total)
+         VALUES ($1, $2, $3, $4, $5, $6, NULL, 0, NULL)`,
+        [order.id, product.id, product.source_id, product.packaging_type, qty, product.unit]
+      );
+      await client.query(
+        `UPDATE inventory SET reserved_qty = reserved_qty + $1, updated_at = NOW() WHERE product_id = $2`,
+        [qty, product.id]
+      );
+      await client.query(
+        `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
+         VALUES ($1, NULL, 'PENDING_PRICING', $2, $3)`,
+        [order.id, userId, `جزء من الطلب الجماعي ${groupNumber}`]
+      );
+
+      createdOrders.push({ ...order, truck_plate: truck.truckPlate, quantity: qty });
+    }
+
+    await client.query('COMMIT');
+    return { groupId, groupNumber, orders: createdOrders };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
+const getGroupOrder = async (groupId, customerId) => {
+  const g = await query(
+    `SELECT * FROM order_groups WHERE id = $1 AND customer_id = $2`,
+    [groupId, customerId]
+  );
+  if (g.rows.length === 0) { const e = new Error('المجموعة غير موجودة'); e.status = 404; throw e; }
+  const orders = await query(
+    `SELECT o.id, o.order_number, o.status, o.total_amount, o.trader_truck_plate, o.trader_driver_name,
+            oi.quantity, oi.unit
+     FROM orders o JOIN order_items oi ON oi.order_id = o.id
+     WHERE o.group_id = $1 ORDER BY o.created_at ASC`,
+    [groupId]
+  );
+  return { ...g.rows[0], orders: orders.rows };
+};
+
 const listPendingPricing = async () => {
   const r = await query(
     `SELECT o.id, o.order_number, o.delivery_type, o.created_at,
@@ -650,7 +811,8 @@ const cancelOrder = async (orderId, userId, reason) => {
 };
 
 module.exports = {
-  createOrder, setOrderPricing, choosePaymentMethod, listPendingPricing,
+  createOrder, createGroupOrder, getGroupOrder,
+  setOrderPricing, choosePaymentMethod, listPendingPricing,
   approveCreditOrder, rejectCreditOrder,
   listPendingCreditOrders, checkCreditAvailability,
   getMyOrders, getOrderById, cancelOrder,

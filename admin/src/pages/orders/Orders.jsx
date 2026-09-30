@@ -121,7 +121,12 @@ export default function Orders() {
             <tbody>
               {filtered.map((o) => (
                 <tr key={o.id}>
-                  <td><strong>{o.order_number}</strong></td>
+                  <td>
+                    <strong>{o.order_number}</strong>
+                    {o.group_number && (
+                      <div style={{ fontSize: 10, color: '#6A1B9A' }}>📦 {o.group_number}</div>
+                    )}
+                  </td>
                   <td>
                     <div>{o.customer_name}</div>
                     <div style={{ fontSize: 11, color: '#999' }}>{o.customer_phone}</div>

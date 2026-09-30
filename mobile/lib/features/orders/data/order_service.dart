@@ -12,13 +12,13 @@ class OrderService {
     String? traderTruckPlate,
     String? traderDriverName,
     String? traderDriverPhone,
-    String paymentTerms = 'cash',
   }) async {
     try {
       final body = <String, dynamic>{
         'deliveryType': deliveryType,
         'items': items,
-        'paymentTerms': paymentTerms,
+        // لا سعر ولا طريقة دفع هنا إطلاقًا — الموظف يسعّر لاحقًا،
+        // ثم يختار العميل طريقة السداد عبر choosePayment بعد معرفة السعر.
       };
       if (addressId != null) body['addressId'] = addressId;
       if (notes != null && notes.isNotEmpty) body['notes'] = notes;
@@ -30,6 +30,22 @@ class OrderService {
         body['traderDriverPhone'] = traderDriverPhone;
 
       final res = await _client.post('/orders', data: body);
+      return res.data['data'] as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+
+  /// اختيار طريقة السداد بعد أن يحدد الموظف السعر (الحالة PENDING_PAYMENT_METHOD).
+  Future<Map<String, dynamic>> choosePayment({
+    required String orderId,
+    required String paymentTerms, // cash | credit | partial
+    double? paidAmountNow,
+  }) async {
+    try {
+      final body = <String, dynamic>{'paymentTerms': paymentTerms};
+      if (paidAmountNow != null) body['paidAmountNow'] = paidAmountNow;
+      final res = await _client.patch('/orders/$orderId/choose-payment', data: body);
       return res.data['data'] as Map<String, dynamic>;
     } on DioException catch (e) {
       throw Exception(handleApiError(e));

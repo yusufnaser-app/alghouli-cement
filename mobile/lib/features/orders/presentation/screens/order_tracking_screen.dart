@@ -16,6 +16,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   bool _loading = true;
 
   static const _steps = [
+    {'status': 'PENDING_PRICING', 'label': 'بانتظار تحديد السعر', 'icon': Icons.request_quote},
+    {'status': 'PENDING_PAYMENT_METHOD', 'label': 'اختيار طريقة السداد', 'icon': Icons.rule},
+    {'status': 'PENDING_ADMIN_APPROVAL', 'label': 'بانتظار موافقة المدير', 'icon': Icons.gavel},
     {'status': 'PENDING_PAYMENT', 'label': 'بانتظار الدفع', 'icon': Icons.payment},
     {'status': 'PENDING_PAYMENT_REVIEW', 'label': 'مراجعة الدفع', 'icon': Icons.hourglass_top},
     {'status': 'PAYMENT_APPROVED', 'label': 'تم اعتماد الدفع', 'icon': Icons.check_circle},

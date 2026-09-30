@@ -5,7 +5,6 @@ import '../../../addresses/domain/address_model.dart';
 import '../../../addresses/presentation/screens/addresses_screen.dart';
 import '../../../orders/data/order_service.dart';
 import '../../../orders/presentation/screens/order_details_screen.dart';
-import '../../../wallet/data/wallet_service.dart';
 import '../../data/cart_manager.dart';
 
 class CheckoutScreen extends StatefulWidget {
@@ -18,7 +17,6 @@ class CheckoutScreen extends StatefulWidget {
 class _CheckoutScreenState extends State<CheckoutScreen> {
   final _cart = CartManager.instance;
   final _orderService = OrderService();
-  final _walletService = WalletService();
   final _notesController = TextEditingController();
   final _truckController = TextEditingController();
   final _driverNameController = TextEditingController();
@@ -26,17 +24,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Address? _selectedAddress;
   String _deliveryType = 'alghouli_delivery';
-  String _paymentTerms = 'cash';
-  CustomerSummary? _summary;
   bool _loading = false;
-  bool _loadingSummary = true;
   String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadSummary();
-  }
 
   @override
   void dispose() {
@@ -45,14 +34,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _driverNameController.dispose();
     _driverPhoneController.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadSummary() async {
-    try {
-      final s = await _walletService.getSummary();
-      setState(() => _summary = s);
-    } catch (_) {}
-    setState(() => _loadingSummary = false);
   }
 
   Future<void> _pickAddress() async {
@@ -105,7 +86,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         traderTruckPlate: _truckController.text.trim(),
         traderDriverName: _driverNameController.text.trim(),
         traderDriverPhone: _driverPhoneController.text.trim(),
-        paymentTerms: _paymentTerms,
       );
 
       _cart.clear();
@@ -118,16 +98,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         ),
       );
 
-      final msg = _paymentTerms == 'credit'
-          ? 'تم إرسال الطلب الآجل — بانتظار موافقة المدير'
-          : 'تم إنشاء الطلب ${order['order_number']}';
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(msg),
-          backgroundColor: _paymentTerms == 'credit'
-              ? AppColors.warning
-              : AppColors.success,
+          content: Text(
+            'تم إرسال طلبك رقم ${order['order_number']} — سيصلك إشعار بالسعر بعد مراجعة الإدارة',
+          ),
+          backgroundColor: AppColors.success,
           duration: const Duration(seconds: 4),
         ),
       );
@@ -268,33 +244,30 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
               const SizedBox(height: 24),
 
-              const Text('طريقة الدفع',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              _paymentOption(
-                'cash',
-                '💵 دفع فوري',
-                'رفع إيصال التحويل',
-                Icons.payments,
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.info.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.info_outline, color: AppColors.info),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'سيصلك إشعار بسعر الطلب بعد مراجعة الإدارة، ثم تختار طريقة السداد.',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              _paymentOption(
-                'credit',
-                '📝 دفع آجل',
-                'يحتاج موافقة المدير',
-                Icons.schedule,
-              ),
-              const SizedBox(height: 16),
-
-              _buildSummaryCard(),
               const SizedBox(height: 24),
 
               PrimaryButton(
-                text: _paymentTerms == 'credit'
-                    ? 'إرسال طلب آجل'
-                    : 'تأكيد الطلب',
-                icon: _paymentTerms == 'credit'
-                    ? Icons.send
-                    : Icons.check_circle,
+                text: 'إرسال طلب الشراء',
+                icon: Icons.send,
                 isLoading: _loading,
                 onPressed: _submit,
               ),
@@ -309,49 +282,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final selected = _deliveryType == value;
     return InkWell(
       onTap: () => setState(() => _deliveryType = value),
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.primary.withOpacity(0.08) : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: selected ? AppColors.primary : AppColors.divider,
-            width: 2,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(icon,
-                color: selected ? AppColors.primary : AppColors.textSecondary),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: selected ? AppColors.primary : null)),
-                  Text(subtitle,
-                      style: const TextStyle(
-                          fontSize: 11, color: AppColors.textSecondary)),
-                ],
-              ),
-            ),
-            if (selected)
-              const Icon(Icons.check_circle, color: AppColors.primary),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _paymentOption(String value, String title, String subtitle, IconData icon) {
-    final selected = _paymentTerms == value;
-    return InkWell(
-      onTap: () => setState(() => _paymentTerms = value),
       borderRadius: BorderRadius.circular(12),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
@@ -444,36 +374,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       size: 18, color: AppColors.textSecondary),
                 ],
               ),
-      ),
-    );
-  }
-
-  Widget _buildSummaryCard() {
-    final subtotal = _cart.subtotal;
-    final currentBalance = _summary?.currentBalance ?? 0;
-    final afterOrder = currentBalance + subtotal;
-    final creditLimit = _summary?.creditLimit ?? 0;
-    final isCredit = _paymentTerms == 'credit';
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.divider),
-      ),
-      child: Column(
-        children: [
-          _row('قيمة الطلب', '${_fmt(subtotal)} ر.ي'),
-          const Divider(height: 24),
-          _row('الإجمالي المتوقع', '${_fmt(subtotal)} ر.ي', bold: true),
-          if (isCredit && _summary != null) ...[
-            const Divider(height: 24),
-            _row('رصيدك الحالي', '${_fmt(currentBalance)} ر.ي'),
-            _row('بعد هذا الطلب', '${_fmt(afterOrder)} ر.ي'),
-            _row('الحد الائتماني', '${_fmt(creditLimit)} ر.ي'),
-          ],
-        ],
       ),
     );
   }

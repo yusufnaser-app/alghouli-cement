@@ -29,6 +29,18 @@ const pricingSchema = z.object({
   transportAmount: z.number().min(0).optional(),
 });
 
+const groupOrderSchema = z.object({
+  productId: z.string().uuid(),
+  addressId: z.string().uuid().optional(),
+  notes: z.string().max(500).optional(),
+  trucks: z.array(z.object({
+    truckPlate: z.string().min(2).max(30),
+    driverName: z.string().min(2).max(150),
+    driverPhone: z.string().max(20).optional(),
+    quantity: z.number().positive(),
+  })).min(2),
+});
+
 const paymentMethodSchema = z.object({
   paymentTerms: z.enum(['cash', 'credit', 'partial']),
   paidAmountNow: z.number().min(0).optional(),
@@ -54,6 +66,19 @@ const choosePayment = asyncHandler(async (req, res) => {
 
 const listPendingPricing = asyncHandler(async (req, res) => {
   return response.success(res, await service.listPendingPricing(), 'طلبات بانتظار التسعير');
+});
+
+const createGroup = asyncHandler(async (req, res) => {
+  const data = groupOrderSchema.parse(req.body);
+  const result = await service.createGroupOrder(req.user.id, data);
+  return response.created(res, result, `تم إرسال الطلب الجماعي ${result.groupNumber}`);
+});
+
+const getGroup = asyncHandler(async (req, res) => {
+  const cust = await require('../../config/db').query(`SELECT id FROM customers WHERE user_id = $1`, [req.user.id]);
+  if (!cust.rows.length) return response.error(res, 'العميل غير موجود', 404);
+  const result = await service.getGroupOrder(req.params.groupId, cust.rows[0].id);
+  return response.success(res, result);
 });
 
 const list = asyncHandler(async (req, res) => {
@@ -163,7 +188,7 @@ const removeCustomerProductPrice = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
-  create, list, getById, cancel, setPricing, choosePayment, listPendingPricing,
+  create, createGroup, getGroup, list, getById, cancel, setPricing, choosePayment, listPendingPricing,
   listPendingCredit, approveCredit, rejectCredit, checkCredit,
   listTransportRates, createTransportRate, updateTransportRate, removeTransportRate,
   listCustomerTransportRates, createCustomerTransportRate, removeCustomerTransportRate,

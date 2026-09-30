@@ -8,6 +8,8 @@ router.use(authenticate);
 
 // للعميل
 router.post('/', controller.create);
+router.post('/group', controller.createGroup);
+router.get('/group/:groupId', controller.getGroup);
 router.get('/', controller.list);
 router.get('/credit-check', controller.checkCredit);
 router.patch('/:id/cancel', controller.cancel);
