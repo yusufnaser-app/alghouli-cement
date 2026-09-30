@@ -56,7 +56,7 @@ class _TraderPurchaseScreenState extends State<TraderPurchaseScreen> {
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
     try {
-      final results = await Future.wait([
+      final results = await Future.wait<dynamic>([
         _api.get('/sources'),
         _api.get('/products'),
         _trader.listDrivers(),

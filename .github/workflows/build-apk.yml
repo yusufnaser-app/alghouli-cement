@@ -39,6 +39,13 @@ jobs:
           cd mobile
           flutter create --platforms=android --org com.alghouli --project-name alghouli_app .
 
+      - name: Set Android compileSdk
+        run: |
+          cd mobile
+          sed -i "s/compileSdk = flutter.compileSdkVersion/compileSdk = 35/; s/compileSdk flutter.compileSdkVersion/compileSdk 35/; s/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 35/" android/app/build.gradle
+          echo "--- Verify compileSdk ---"
+          grep -n "compileSdk" android/app/build.gradle
+
       - name: Copy google-services.json
         run: |
           cd mobile
