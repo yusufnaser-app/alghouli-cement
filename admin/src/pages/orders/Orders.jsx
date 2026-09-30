@@ -115,7 +115,6 @@ export default function Orders() {
                 <th>العميل</th>
                 <th>التاريخ</th>
                 <th>الإجمالي</th>
-                <th>نقل التاجر</th>
                 <th>الحالة</th>
                 <th></th>
               </tr>
@@ -135,11 +134,7 @@ export default function Orders() {
                   </td>
                   <td>{o.created_at?.substring(0, 10)}</td>
                   <td><strong className="text-primary">{o.total_amount != null ? `${fmt(o.total_amount)} ر.ي` : '—'}</strong></td>
-                  <td>
-                    {o.trader_transport_amount != null
-                      ? `${fmt(o.trader_transport_amount)} ر.ي`
-                      : '—'}
-                  </td>
+
                   <td>
                     <span className={`badge ${statusColor(o.status)}`}>
                       {statusAr[o.status] || o.status}
