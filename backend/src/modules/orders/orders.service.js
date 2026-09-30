@@ -314,8 +314,9 @@ const setOrderPricing = async (orderId, staffUserId, data) => {
       `UPDATE orders SET
          subtotal = $1, shipping_amount = $2, total_amount = $3, remaining_amount = $3,
          status = 'PENDING_PAYMENT_METHOD', priced_by = $4, priced_at = NOW(),
-         transport_beneficiary = $5,
-         transport_beneficiary_trader_id = CASE WHEN $5 = 'trader' THEN customer_id ELSE NULL END,
+         transport_beneficiary = $5::text,
+         transport_beneficiary_trader_id =
+           CASE WHEN $5::text = 'trader' THEN customer_id ELSE NULL END,
          updated_at = NOW()
        WHERE id = $6`,
       [subtotal, transportAmount, totalAmount, staffUserId, beneficiary, orderId]
