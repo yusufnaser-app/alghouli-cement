@@ -20,6 +20,7 @@ const listProducts = async (filters = {}) => {
   let sql = `
     SELECT p.id, p.name_ar, p.grade, p.packaging_type, p.bag_weight_kg,
            p.description, p.image_url, p.status, p.min_order_qty,
+           s.id AS source_id,
            s.code AS source_code, s.name_ar AS source_name,
            c.code AS category_code, c.name_ar AS category_name,
            c.color_code AS category_color, c.color_name_ar AS category_color_name,

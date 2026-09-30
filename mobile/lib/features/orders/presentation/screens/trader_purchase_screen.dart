@@ -73,7 +73,9 @@ class _TraderPurchaseScreenState extends State<TraderPurchaseScreen> {
         _drivers = results[2];
         _vehicles = results[3];
         _addressesList = results[4];
-        _factoryId = factories.isNotEmpty ? factories.first['id'] : null;
+        _factoryId = factories.isNotEmpty
+            ? factories.first['id']?.toString()
+            : null;
         _addressId = _addressesList.isNotEmpty ? _addressesList.first.id : null;
         _syncProduct();
       });
@@ -87,14 +89,24 @@ class _TraderPurchaseScreenState extends State<TraderPurchaseScreen> {
   }
 
   void _syncProduct() {
-    final available = _products.where((p) => p['source_id'] == _factoryId).toList();
-    if (_productId == null || !available.any((p) => p['id'] == _productId)) {
-      _productId = available.isNotEmpty ? available.first['id'] : null;
+    final available = _products.where((p) {
+      return p['source_id']?.toString() == _factoryId?.toString();
+    }).toList();
+
+    if (_productId == null ||
+        !available.any(
+          (p) => p['id']?.toString() == _productId?.toString(),
+        )) {
+      _productId =
+          available.isNotEmpty ? available.first['id']?.toString() : null;
     }
   }
 
-  List<Map<String, dynamic>> get _factoryProducts =>
-      _products.where((p) => p['source_id'] == _factoryId).toList();
+  List<Map<String, dynamic>> get _factoryProducts {
+    return _products.where((p) {
+      return p['source_id']?.toString() == _factoryId?.toString();
+    }).toList();
+  }
 
   List<Map<String, dynamic>> get _driverVehicles => _vehicles.where((v) =>
       _driverId == null || v['current_driver_id'] == _driverId).toList();
@@ -173,7 +185,7 @@ class _TraderPurchaseScreenState extends State<TraderPurchaseScreen> {
                   DropdownButtonFormField<String>(
                     value: _factoryId,
                     items: _factories.map((f) => DropdownMenuItem<String>(
-                      value: f['id'], child: Text(f['name_ar'] ?? 'مصنع'),
+                      value: f['id']?.toString(), child: Text(f['name_ar'] ?? 'مصنع'),
                     )).toList(),
                     onChanged: (v) => setState(() { _factoryId = v; _syncProduct(); }),
                   ),
@@ -182,7 +194,7 @@ class _TraderPurchaseScreenState extends State<TraderPurchaseScreen> {
                   DropdownButtonFormField<String>(
                     value: _productId,
                     items: _factoryProducts.map((p) => DropdownMenuItem<String>(
-                      value: p['id'], child: Text(p['name_ar'] ?? 'أسمنت'),
+                      value: p['id']?.toString(), child: Text(p['name_ar'] ?? 'أسمنت'),
                     )).toList(),
                     onChanged: (v) => setState(() => _productId = v),
                   ),
