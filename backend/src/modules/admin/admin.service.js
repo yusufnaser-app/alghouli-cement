@@ -44,14 +44,11 @@ const listOrders = async (filters = {}) => {
     SELECT o.id, o.order_number, o.status, o.source,
            o.total_amount, o.paid_amount, o.remaining_amount,
            o.created_at, og.group_number,
-           u.full_name AS customer_name, u.phone AS customer_phone,
-           COALESCE(oap.trader_transport_amount, 0) AS trader_transport_amount,
-           COALESCE(oap.driver_transport_debit, 0) AS driver_transport_debit
+           u.full_name AS customer_name, u.phone AS customer_phone
     FROM orders o
     JOIN customers c ON c.id = o.customer_id
     JOIN users u ON u.id = c.user_id
     LEFT JOIN order_groups og ON og.id = o.group_id
-    LEFT JOIN order_accounting_postings oap ON oap.order_id = o.id
     WHERE 1=1
   `;
   const params = [];
