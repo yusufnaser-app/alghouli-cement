@@ -144,7 +144,13 @@ const register = async (data) => {
       };
     }
 
-    // ============ عميل ============
+    // ============ عميل / تاجر ============
+    if (!data.password || data.password.length < 6) {
+      const err = new Error('كلمة المرور مطلوبة ويجب أن تكون 6 أحرف على الأقل');
+      err.status = 400;
+      throw err;
+    }
+
     if (!data.customerType) {
       const err = new Error('نوع العميل مطلوب');
       err.status = 400;
@@ -156,11 +162,14 @@ const register = async (data) => {
       throw err;
     }
 
+    const hash = await bcrypt.hash(data.password, 12);
+
     const u = await client.query(
-      `INSERT INTO users (full_name, phone, user_type, status)
-       VALUES ($1, $2, 'customer', 'active')
+      `INSERT INTO users
+       (full_name, phone, password_hash, user_type, status)
+       VALUES ($1, $2, $3, 'customer', 'active')
        RETURNING id`,
-      [data.fullName, data.phone]
+      [data.fullName, data.phone, hash]
     );
     const userId = u.rows[0].id;
 

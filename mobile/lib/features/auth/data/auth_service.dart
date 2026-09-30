@@ -41,8 +41,11 @@ class AuthService {
         'phone': phone,
       };
 
-      if (userType == 'driver') {
+      if (password != null && password.isNotEmpty) {
         body['password'] = password;
+      }
+
+      if (userType == 'driver') {
         body['nationalId'] = nationalId;
         body['vehicleType'] = vehicleType;
         body['plateNumber'] = plateNumber;

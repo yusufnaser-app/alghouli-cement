@@ -17,7 +17,7 @@ const registerSchema = z.object({
   address: z.string().optional(),
 
   // سائق
-  password: z.string().min(6, 'كلمة المرور 6 أحرف على الأقل').optional(),
+  password: z.string().min(6, 'كلمة المرور 6 أحرف على الأقل'),
   nationalId: z.string().min(4).max(50).optional(),
   vehicleType: z.enum(['truck_10t', 'truck_20t', 'tanker', 'pickup']).optional(),
   plateNumber: z.string().min(3).max(30).optional(),
