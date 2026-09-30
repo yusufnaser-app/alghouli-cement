@@ -263,6 +263,13 @@ const createTables = async () => {
       );
     `);
 
+    // ترقية جدول ترحيل حسابات الطلبات للبيانات القديمة
+    // إضافة العمود فقط إذا كان غير موجود، بدون إنشاء جدول جديد.
+    await client.query(`
+      ALTER TABLE order_accounting_postings
+      ADD COLUMN IF NOT EXISTS trader_transport_amount DECIMAL(14,2) NOT NULL DEFAULT 0
+    `);
+
     await client.query('COMMIT');
     console.log('✅ تم إنشاء جميع الجداول بنجاح');
   } catch (err) {
