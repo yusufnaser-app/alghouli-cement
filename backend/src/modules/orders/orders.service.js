@@ -644,13 +644,6 @@ const approveCreditOrder = async (orderId, adminId) => {
        credit_approved_at = NOW(), paid_amount = 0, remaining_amount = total_amount, updated_at = NOW() WHERE id = $2`,
       [adminId, orderId]
     );
-    if (parseFloat(order.credit_amount || 0) > 0) {
-      await ledgerService.addTransaction(client, {
-        customerId: order.customer_id, orderId, transactionType: 'purchase',
-        debit: parseFloat(order.credit_amount),
-        description: `طلب ${order.order_number} - تحت الحساب`, createdBy: adminId,
-      });
-    }
     await client.query(
       `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
        VALUES ($1, 'PENDING_ADMIN_APPROVAL', 'PAYMENT_APPROVED', $2, 'اعتماد الدفع تحت الحساب')`,
@@ -711,16 +704,6 @@ const rejectCreditOrder = async (orderId, adminId, reason) => {
       );
     }
 
-    // اعكس الدين
-    if (parseFloat(order.credit_amount || 0) > 0) {
-      await ledgerService.addTransaction(client, {
-        customerId: order.customer_id,
-        orderId, transactionType: 'cancellation',
-        credit: parseFloat(order.credit_amount),
-        description: `رفض طلب آجل`,
-        createdBy: adminId,
-      });
-    }
 
     await client.query(
       `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
@@ -860,15 +843,6 @@ const cancelOrder = async (orderId, userId, reason) => {
       `UPDATE orders SET status = 'CANCELLED', updated_at = NOW() WHERE id = $1`,
       [orderId]
     );
-    if (parseFloat(order.credit_amount || 0) > 0) {
-      await ledgerService.addTransaction(client, {
-        customerId: order.customer_id, orderId,
-        transactionType: 'cancellation',
-        credit: parseFloat(order.credit_amount),
-        description: 'إلغاء طلب',
-        createdBy: userId,
-      });
-    }
     await client.query(
       `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
        VALUES ($1, $2, 'CANCELLED', $3, $4)`,

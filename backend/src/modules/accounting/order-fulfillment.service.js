@@ -46,16 +46,48 @@ const postActualLoading = async (client, faxId, loadedQuantity, postedBy, notes 
 
   const cust = await client.query(`SELECT current_balance FROM customers WHERE id = $1 FOR UPDATE`, [fax.customer_id]);
   if (!cust.rows.length) { const e = new Error('العميل غير موجود'); e.status = 404; throw e; }
-  const customerAfter = money(Number(cust.rows[0].current_balance || 0) + finalTotal - paidAmount);
+
+  const refCode = fax.fax_number || fax.order_number;
+  let running = money(Number(cust.rows[0].current_balance || 0));
+
+  // قيد 1: قيمة الأسمنت (debit على التاجر)
+  running = money(running + finalSubtotal);
   await client.query(`
     INSERT INTO customer_ledger
       (customer_id, order_id, transaction_type, debit, credit, balance_after, description,
-       payment_method, reference_code, created_by, source_type, source_id)
-    VALUES ($1,$2,'actual_sale',$3,$4,$5,$6,$7,$8,$9,'order_fulfillment',$2)`, [
-      fax.customer_id, fax.order_id, finalTotal, paidAmount, customerAfter,
-      `بيع فعلي عند تحميل الطلب ${fax.order_number} — الكمية ${loaded}`,
-      fax.payment_terms || null, fax.fax_number || fax.order_number, postedBy]);
-  await client.query(`UPDATE customers SET current_balance = $1 WHERE id = $2`, [customerAfter, fax.customer_id]);
+       reference_code, created_by, source_type, source_id)
+    VALUES ($1,$2,'sale',$3,0,$4,$5,$6,$7,'order_fulfillment',$2)`, [
+      fax.customer_id, fax.order_id, finalSubtotal, running,
+      `قيمة الأسمنت — طلب ${fax.order_number} — كمية ${loaded}`,
+      refCode, postedBy]);
+
+  // قيد 2: أجور النقل للتاجر (credit — فقط إن كان سائق تاجر)
+  if (fax.transport_beneficiary === 'trader' && finalShipping > 0) {
+    running = money(running - finalShipping);
+    await client.query(`
+      INSERT INTO customer_ledger
+        (customer_id, order_id, transaction_type, debit, credit, balance_after, description,
+         reference_code, created_by, source_type, source_id)
+      VALUES ($1,$2,'transport_credit',0,$3,$4,$5,$6,$7,'order_fulfillment',$2)`, [
+        fax.customer_id, fax.order_id, finalShipping, running,
+        `أجور النقل المستحقة للتاجر — طلب ${fax.order_number}`,
+        refCode, postedBy]);
+  }
+
+  // قيد 3: الدفعة (credit — فقط إن دفع)
+  if (paidAmount > 0) {
+    running = money(running - paidAmount);
+    await client.query(`
+      INSERT INTO customer_ledger
+        (customer_id, order_id, transaction_type, debit, credit, balance_after, description,
+         reference_code, created_by, source_type, source_id)
+      VALUES ($1,$2,'payment',0,$3,$4,$5,$6,$7,'order_fulfillment',$2)`, [
+        fax.customer_id, fax.order_id, paidAmount, running,
+        `دفعة عند تحميل الطلب ${fax.order_number}`,
+        refCode, postedBy]);
+  }
+
+  await client.query(`UPDATE customers SET current_balance = $1 WHERE id = $2`, [running, fax.customer_id]);
 
   let driverTransport = 0;
   if (fax.transport_beneficiary === 'driver' && fax.driver_id && finalShipping > 0) {
