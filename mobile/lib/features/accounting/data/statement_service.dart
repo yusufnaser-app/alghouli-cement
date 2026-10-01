@@ -6,7 +6,7 @@ class StatementService {
 
   Future<Map<String, dynamic>> myStatement({int limit = 100, int offset = 0}) async {
     try {
-      final res = await _client.get('/accounting/my-statement', queryParameters: {
+      final res = await _client.get('/accounting/my-statement', query: {
         'limit': limit,
         'offset': offset,
       });
