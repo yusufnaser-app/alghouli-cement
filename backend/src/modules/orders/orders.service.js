@@ -388,7 +388,18 @@ const choosePaymentMethod = async (orderId, userId, data) => {
     let creditAmount = 0;
 
     if (paymentTerms === 'on_account') {
-      creditAmount = totalAmount;
+      paidNow = parseFloat(data.paidAmountNow || 0);
+      if (isNaN(paidNow) || paidNow < 0) {
+        const e = new Error('المبلغ المدفوع الآن غير صالح');
+        e.status = 400;
+        throw e;
+      }
+      if (paidNow > totalAmount) {
+        const e = new Error('المبلغ المدفوع الآن أكبر من إجمالي الطلب');
+        e.status = 400;
+        throw e;
+      }
+      creditAmount = totalAmount - paidNow;
     } else if (paymentTerms === 'partial') {
       paidNow = parseFloat(data.paidAmountNow || 0);
       if (!(paidNow > 0 && paidNow < totalAmount)) {

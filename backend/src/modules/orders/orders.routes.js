@@ -39,6 +39,7 @@ router.post('/admin/customers/:customerId/product-prices', requireRoles('admin')
 router.delete('/admin/customers/:customerId/product-prices/:id', requireRoles('admin'), controller.removeCustomerProductPrice);
 
 // يجب أن يكون آخر شيء — :id
+router.get('/:id/full', controller.getFullOrder);
 router.get('/:id', controller.getById);
 
 module.exports = router;

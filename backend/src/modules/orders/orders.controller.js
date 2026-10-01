@@ -2,6 +2,7 @@ const { z } = require('zod');
 const asyncHandler = require('../../utils/asyncHandler');
 const response = require('../../utils/response');
 const service = require('./orders.service');
+const fullService = require('./order-full.service');
 const transportService = require('./transport.service');
 
 // لا سعر ولا طريقة دفع عند الإنشاء (مواصفة الواجهة الجديدة) — تُحدَّد لاحقًا عبر
@@ -192,10 +193,21 @@ const removeCustomerProductPrice = asyncHandler(async (req, res) => {
   return response.success(res, null, 'تم الحذف');
 });
 
+
+const getFullOrder = asyncHandler(async (req, res) => {
+  const data = await fullService.getFullOrder(
+    req.params.id,
+    req.user.id,
+    req.roles || []
+  );
+  return response.success(res, data);
+});
+
 module.exports = {
   create, createGroup, getGroup, list, getById, cancel, setPricing, choosePayment, listPendingPricing,
   listPendingCredit, approveCredit, rejectCredit, checkCredit,
   listTransportRates, createTransportRate, updateTransportRate, removeTransportRate,
   listCustomerTransportRates, createCustomerTransportRate, removeCustomerTransportRate,
   listCustomerProductPrices, createCustomerProductPrice, removeCustomerProductPrice,
+  getFullOrder,
 };
