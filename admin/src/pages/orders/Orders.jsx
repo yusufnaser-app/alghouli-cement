@@ -134,7 +134,6 @@ export default function Orders() {
                   </td>
                   <td>{o.created_at?.substring(0, 10)}</td>
                   <td><strong className="text-primary">{o.total_amount != null ? `${fmt(o.total_amount)} ر.ي` : '—'}</strong></td>
-
                   <td>
                     <span className={`badge ${statusColor(o.status)}`}>
                       {statusAr[o.status] || o.status}
@@ -208,9 +207,7 @@ export default function Orders() {
                       <h4 style={{ marginBottom: 12 }}>الملخص</h4>
                       <p><strong>الإجمالي الفرعي:</strong> {fmt(details.subtotal)} ر.ي</p>
                       <p><strong>الخصم:</strong> {fmt(details.discount_amount)} ر.ي</p>
-                      <p><strong>إجمالي النقل:</strong> {fmt(details.shipping_amount)} ر.ي</p>
-                      <p><strong>نقل على حساب التاجر:</strong> {fmt(details.accounting_posting?.trader_transport_amount)} ر.ي</p>
-                      <p><strong>نقل على حساب السائق:</strong> {fmt(details.accounting_posting?.driver_transport_debit)} ر.ي</p>
+                      <p><strong>النقل:</strong> {fmt(details.shipping_amount)} ر.ي</p>
                       <p style={{ fontSize: 20 }}><strong>الإجمالي:</strong> <span className="text-primary">{fmt(details.total_amount)} ر.ي</span></p>
                       <p><strong>المدفوع:</strong> {fmt(details.paid_amount)} ر.ي</p>
                       <p><strong>المتبقي:</strong> <span className="text-danger">{fmt(details.remaining_amount)} ر.ي</span></p>

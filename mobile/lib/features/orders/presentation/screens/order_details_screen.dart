@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../data/order_service.dart';
 import '../../../payments/presentation/screens/choose_payment_screen.dart';
+import '../../../accounting/presentation/screens/my_statement_screen.dart';
 import '../../../payments/presentation/screens/upload_receipt_screen.dart';
 
 class OrderDetailsScreen extends StatefulWidget {
@@ -261,6 +262,25 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
             ]),
 
           const SizedBox(height: 24),
+
+          // زر عرض كشف الحساب
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const MyStatementScreen()),
+              );
+            },
+            icon: const Icon(Icons.account_balance_wallet_outlined),
+            label: const Text('عرض كشف الحساب'),
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 52),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
 
           // زر اختيار طريقة السداد (بعد معرفة السعر لأول مرة)
           if (canChoosePayment)
