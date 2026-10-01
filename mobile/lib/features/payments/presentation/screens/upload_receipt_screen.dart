@@ -1,10 +1,10 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/widgets/primary_button.dart';
 import '../../data/payment_service.dart';
 
+/// شاشة إدخال بيانات السداد التحويلي (بدون رفع صورة إيصال).
+/// تسجّل: طريقة الدفع + العملة + المبلغ + رقم العملية + تاريخ التحويل.
 class UploadReceiptScreen extends StatefulWidget {
   final String orderId;
   final double totalAmount;
@@ -26,11 +26,11 @@ class _UploadReceiptScreenState extends State<UploadReceiptScreen> {
 
   List<Map<String, dynamic>> _methods = [];
   String? _selectedMethodId;
+  String _currency = 'YER';
   DateTime _transferDate = DateTime.now();
   bool _loading = false;
   bool _loadingMethods = true;
   String? _error;
-  XFile? _receiptImage;
 
   @override
   void initState() {
@@ -49,10 +49,14 @@ class _UploadReceiptScreenState extends State<UploadReceiptScreen> {
   Future<void> _loadMethods() async {
     try {
       final list = await _service.methods();
-      final traderMethods = list.where((m) => ['network_transfer', 'e_wallet'].contains(m['code'])).toList();
+      final traderMethods = list
+          .where((m) => ['network_transfer', 'e_wallet'].contains(m['code']))
+          .toList();
       setState(() {
         _methods = traderMethods;
-        if (list.isNotEmpty) _selectedMethodId = list.first['id'];
+        if (traderMethods.isNotEmpty) {
+          _selectedMethodId = traderMethods.first['id']?.toString();
+        }
       });
     } catch (e) {
       setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
@@ -71,15 +75,6 @@ class _UploadReceiptScreenState extends State<UploadReceiptScreen> {
     if (picked != null) setState(() => _transferDate = picked);
   }
 
-  Future<void> _pickReceipt(ImageSource source) async {
-    try {
-      final image = await ImagePicker().pickImage(source: source, imageQuality: 80, maxWidth: 1600);
-      if (image != null && mounted) setState(() => _receiptImage = image);
-    } catch (e) {
-      if (mounted) setState(() => _error = 'تعذر اختيار صورة الإيصال');
-    }
-  }
-
   Future<void> _submit() async {
     if (_selectedMethodId == null) {
       setState(() => _error = 'يرجى اختيار طريقة الدفع');
@@ -92,27 +87,27 @@ class _UploadReceiptScreenState extends State<UploadReceiptScreen> {
       return;
     }
 
+    if (_refController.text.trim().isEmpty) {
+      setState(() => _error = 'يرجى إدخال رقم العملية / المرجع');
+      return;
+    }
+
     setState(() {
       _loading = true;
       _error = null;
     });
 
     try {
-      final dateStr = '${_transferDate.year}-${_transferDate.month.toString().padLeft(2, '0')}-${_transferDate.day.toString().padLeft(2, '0')}';
-      if (_receiptImage == null) {
-        setState(() => _error = 'صورة إيصال التحويل مطلوبة');
-        return;
-      }
+      final dateStr =
+          '${_transferDate.year}-${_transferDate.month.toString().padLeft(2, '0')}-${_transferDate.day.toString().padLeft(2, '0')}';
 
-      final uploaded = await _service.uploadReceipt(_receiptImage!.path);
       await _service.submit(
         orderId: widget.orderId,
         methodId: _selectedMethodId!,
         amount: amount,
+        currency: _currency,
         transferDate: dateStr,
         transactionRef: _refController.text.trim(),
-        receiptUrl: uploaded['url']?.toString(),
-        receiptPath: uploaded['path']?.toString(),
       );
 
       if (!mounted) return;
@@ -128,7 +123,7 @@ class _UploadReceiptScreenState extends State<UploadReceiptScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('رفع إيصال الدفع')),
+      appBar: AppBar(title: const Text('بيانات الدفع')),
       body: _loadingMethods
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
@@ -145,11 +140,10 @@ class _UploadReceiptScreenState extends State<UploadReceiptScreen> {
                     child: Column(
                       children: [
                         const Text('المبلغ المطلوب',
-                            style: TextStyle(
-                                color: AppColors.textSecondary)),
+                            style: TextStyle(color: AppColors.textSecondary)),
                         const SizedBox(height: 4),
                         Text(
-                          '${widget.totalAmount.toStringAsFixed(0)} ريال',
+                          widget.totalAmount.toStringAsFixed(0),
                           style: const TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.bold,
@@ -180,11 +174,28 @@ class _UploadReceiptScreenState extends State<UploadReceiptScreen> {
                     ),
                     items: _methods
                         .map((m) => DropdownMenuItem<String>(
-                              value: m['id'] as String,
-                              child: Text(m['name_ar'] ?? ''),
+                              value: m['id']?.toString(),
+                              child: Text(m['name_ar']?.toString() ?? ''),
                             ))
                         .toList(),
                     onChanged: (v) => setState(() => _selectedMethodId = v),
+                  ),
+                  const SizedBox(height: 16),
+                  _lbl('العملة'),
+                  DropdownButtonFormField<String>(
+                    value: _currency,
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.currency_exchange),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                          value: 'YER', child: Text('ريال يمني (YER)')),
+                      DropdownMenuItem(
+                          value: 'USD', child: Text('دولار أمريكي (USD)')),
+                      DropdownMenuItem(
+                          value: 'SAR', child: Text('ريال سعودي (SAR)')),
+                    ],
+                    onChanged: (v) => setState(() => _currency = v ?? 'YER'),
                   ),
                   const SizedBox(height: 16),
                   _lbl('المبلغ المحول'),
@@ -203,33 +214,6 @@ class _UploadReceiptScreenState extends State<UploadReceiptScreen> {
                     decoration: const InputDecoration(
                       hintText: 'TXN-123456',
                       prefixIcon: Icon(Icons.tag),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _lbl('صورة إيصال التحويل *'),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.divider),
-                    ),
-                    child: Column(
-                      children: [
-                        if (_receiptImage != null)
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.file(File(_receiptImage!.path), height: 180, fit: BoxFit.cover),
-                          ),
-                        if (_receiptImage != null) const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(child: OutlinedButton.icon(onPressed: () => _pickReceipt(ImageSource.camera), icon: const Icon(Icons.camera_alt), label: const Text('الكاميرا'))),
-                            const SizedBox(width: 8),
-                            Expanded(child: OutlinedButton.icon(onPressed: () => _pickReceipt(ImageSource.gallery), icon: const Icon(Icons.photo_library), label: const Text('المعرض'))),
-                          ],
-                        ),
-                      ],
                     ),
                   ),
                   const SizedBox(height: 16),

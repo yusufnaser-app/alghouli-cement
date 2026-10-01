@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../data/order_service.dart';
-import '../../../payments/presentation/screens/upload_receipt_screen.dart';
 import '../../../payments/presentation/screens/choose_payment_screen.dart';
+import '../../../payments/presentation/screens/upload_receipt_screen.dart';
 
 class OrderDetailsScreen extends StatefulWidget {
   final String orderId;
@@ -305,8 +305,8 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                 );
                 if (result == true) _load();
               },
-              icon: const Icon(Icons.upload_file),
-              label: const Text('رفع إيصال الدفع'),
+              icon: const Icon(Icons.payment),
+              label: const Text('إتمام الدفع'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
