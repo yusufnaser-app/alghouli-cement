@@ -47,6 +47,21 @@ jobs:
           ls -la android/app/google-services.json
           cat android/app/google-services.json | head -10
 
+      - name: Bump NDK version
+        run: |
+          cd mobile
+          if [ -f android/app/build.gradle.kts ]; then
+            sed -i -E 's/ndkVersion\s*=\s*.*/ndkVersion = "27.0.12077973"/' android/app/build.gradle.kts
+            echo "--- patched build.gradle.kts ---"
+            grep -n "ndkVersion" android/app/build.gradle.kts
+          elif [ -f android/app/build.gradle ]; then
+            sed -i -E 's/ndkVersion\s+.*/ndkVersion "27.0.12077973"/' android/app/build.gradle
+            echo "--- patched build.gradle ---"
+            grep -n "ndkVersion" android/app/build.gradle
+          else
+            echo "❌ لا يوجد build.gradle(.kts)"; exit 1
+          fi
+
       - name: Patch gradle for Firebase
         run: python3 scripts/patch-firebase.py
 
