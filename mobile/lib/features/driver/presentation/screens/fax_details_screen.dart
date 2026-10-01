@@ -397,12 +397,10 @@ class _FaxDetailsScreenState extends State<FaxDetailsScreen> {
                 ],
               ),
             ),
-          if (status == 'ISSUED' && f['factory_entered_at'] == null)
+          if (['ISSUED', 'APPROVED'].contains(status) && f['factory_entered_at'] == null)
             _bigButton('وصلت للمصنع', Icons.login, AppColors.info,
                 _updating ? null : _enterFactory),
-          if ((status == 'ISSUED' ||
-                  (status == 'APPROVED' && f['factory_entered_at'] != null)) &&
-              f['used_at'] == null)
+          if (['ISSUED', 'APPROVED'].contains(status) && f['used_at'] == null)
             _bigButton('تم التحميل', Icons.inventory, AppColors.success,
                 _updating ? null : _confirmLoading),
           if (status == 'USED')
