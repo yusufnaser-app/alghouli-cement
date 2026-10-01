@@ -3,7 +3,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/widgets/primary_button.dart';
 import '../../../orders/data/order_service.dart';
 import '../../../wallet/data/wallet_service.dart';
-import '../data/payment_service.dart';
+import '../../data/payment_service.dart';
 
 /// بعد تسعير الطلب يختار العميل طريقة السداد.
 /// الدفع التحويلي يسجل: العملة + المبلغ بنفس العملة + رقم العملية فقط.
