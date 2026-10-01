@@ -270,6 +270,28 @@ const createTables = async () => {
       ADD COLUMN IF NOT EXISTS trader_transport_amount DECIMAL(14,2) NOT NULL DEFAULT 0
     `);
 
+    // ترقية جدول payments لدعم العملة (multi-currency)
+    await client.query(`
+      ALTER TABLE payments
+      ADD COLUMN IF NOT EXISTS payment_currency VARCHAR(3)
+    `);
+
+    await client.query(`
+      UPDATE payments
+      SET payment_currency = 'YER'
+      WHERE payment_currency IS NULL
+    `);
+
+    await client.query(`
+      ALTER TABLE payments
+      ALTER COLUMN payment_currency SET DEFAULT 'YER'
+    `);
+
+    await client.query(`
+      ALTER TABLE payments
+      ALTER COLUMN payment_currency SET NOT NULL
+    `);
+
     await client.query('COMMIT');
     console.log('✅ تم إنشاء جميع الجداول بنجاح');
   } catch (err) {

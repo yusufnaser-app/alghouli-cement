@@ -7,10 +7,9 @@ const submitSchema = z.object({
   orderId: z.string().uuid(),
   methodId: z.string().uuid(),
   amountTransferred: z.number().positive(),
+  paymentCurrency: z.enum(['YER', 'USD', 'SAR']),
   transferDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   transactionRef: z.string().max(100).optional(),
-  receiptUrl: z.string().url().max(2000).optional(),
-  receiptPath: z.string().max(500).optional(),
 });
 
 const rejectSchema = z.object({
@@ -25,7 +24,7 @@ const listMethods = asyncHandler(async (req, res) => {
 const submit = asyncHandler(async (req, res) => {
   const data = submitSchema.parse(req.body);
   const payment = await service.submitPayment(req.user.id, data);
-  return response.created(res, payment, 'تم إرسال الإيصال للمراجعة');
+  return response.created(res, payment, 'تم إرسال بيانات السداد للمراجعة');
 });
 
 const myPayments = asyncHandler(async (req, res) => {

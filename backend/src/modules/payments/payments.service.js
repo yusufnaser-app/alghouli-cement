@@ -45,7 +45,7 @@ const submitPayment = async (userId, data) => {
 
     // تحقق من طريقة الدفع
     const methodResult = await client.query(
-      `SELECT id FROM payment_methods WHERE id = $1 AND status = 'active'`,
+      `SELECT id, code FROM payment_methods WHERE id = $1 AND status = 'active'`,
       [data.methodId]
     );
     if (methodResult.rows.length === 0) {
@@ -54,24 +54,33 @@ const submitPayment = async (userId, data) => {
       throw err;
     }
 
-    // أنشئ الدفعة
+    // تحقق من طريقة الدفع والعملة.
+    // لا يوجد سعر صرف: المبلغ يحفظ بنفس العملة التي أدخلها العميل.
+    const methodCode = methodResult.rows[0].code;
+    if (['network_transfer', 'e_wallet'].includes(methodCode) &&
+        (!data.transactionRef || !data.transactionRef.trim())) {
+      const err = new Error('رقم الحوالة أو رقم العملية مطلوب');
+      err.status = 400;
+      throw err;
+    }
+
+    const paymentCurrency = data.paymentCurrency;
     const referenceCode = await generatePaymentRef();
 
     const paymentResult = await client.query(
       `INSERT INTO payments
-       (order_id, method_id, amount_due, amount_transferred, transfer_date,
-        transaction_ref, receipt_url, receipt_path, status, reference_code)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'under_review', $9)
-       RETURNING id, reference_code, status`,
+       (order_id, method_id, amount_due, amount_transferred, payment_currency,
+        transfer_date, transaction_ref, status, reference_code)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'under_review', $8)
+       RETURNING id, reference_code, status, payment_currency, amount_transferred`,
       [
         order.id,
         data.methodId,
         order.total_amount,
         data.amountTransferred,
+        paymentCurrency,
         data.transferDate,
-        data.transactionRef || null,
-        data.receiptUrl || null,
-        data.receiptPath || null,
+        data.transactionRef ? data.transactionRef.trim() : null,
         referenceCode,
       ]
     );
@@ -109,7 +118,7 @@ const submitPayment = async (userId, data) => {
 const getMyPayments = async (userId) => {
   const result = await query(
     `SELECT p.id, p.reference_code, p.status, p.amount_due,
-            p.amount_transferred, p.transfer_date, p.transaction_ref, p.receipt_url, p.receipt_path,
+            p.amount_transferred, p.payment_currency, p.transfer_date, p.transaction_ref,
             p.rejection_reason, p.created_at,
             o.order_number
      FROM payments p
@@ -125,7 +134,7 @@ const getMyPayments = async (userId) => {
 const getPaymentById = async (paymentId, userId = null, isAdmin = false) => {
   let sql = `
     SELECT p.id, p.reference_code, p.status, p.amount_due,
-           p.amount_transferred, p.transfer_date, p.transaction_ref,
+           p.amount_transferred, p.payment_currency, p.transfer_date, p.transaction_ref,
            p.rejection_reason, p.reviewed_at, p.created_at,
            o.id AS order_id, o.order_number, o.total_amount,
            u.full_name AS customer_name, u.phone AS customer_phone,
@@ -151,7 +160,7 @@ const getPaymentById = async (paymentId, userId = null, isAdmin = false) => {
 const listPendingPayments = async () => {
   const result = await query(
     `SELECT p.id, p.reference_code, p.status,
-            p.amount_due, p.amount_transferred, p.transfer_date,
+            p.amount_due, p.amount_transferred, p.payment_currency, p.transfer_date,
             p.transaction_ref, p.created_at,
             o.order_number, o.id AS order_id,
             u.full_name AS customer_name, u.phone AS customer_phone,
@@ -173,7 +182,7 @@ const approvePayment = async (paymentId, reviewerId) => {
     await client.query('BEGIN');
 
     const pResult = await client.query(
-      `SELECT p.id, p.order_id, p.status, p.amount_transferred,
+      `SELECT p.id, p.order_id, p.status, p.amount_transferred, p.payment_currency,
               o.status AS order_status, o.fax_requested, o.delivery_type
        FROM payments p
        JOIN orders o ON o.id = p.order_id
@@ -201,16 +210,29 @@ const approvePayment = async (paymentId, reviewerId) => {
       [reviewerId, paymentId]
     );
 
-    // حدّث الطلب
-    await client.query(
-      `UPDATE orders
-       SET status = 'PAYMENT_APPROVED',
-           paid_amount = $1,
-           remaining_amount = total_amount - $1,
-           updated_at = NOW()
-       WHERE id = $2`,
-      [payment.amount_transferred, payment.order_id]
-    );
+    // حدّث حالة الطلب.
+    // عند YER يمكن تحديث paid_amount/remaining_amount مباشرة.
+    // العملات الأجنبية تبقى مسجلة بعملتها دون تحويل؛ لذلك لا نخلطها
+    // مع الحقول المحاسبية الحالية بالريال اليمني.
+    if (payment.payment_currency === 'YER') {
+      await client.query(
+        `UPDATE orders
+         SET status = 'PAYMENT_APPROVED',
+             paid_amount = $1,
+             remaining_amount = total_amount - $1,
+             updated_at = NOW()
+         WHERE id = $2`,
+        [payment.amount_transferred, payment.order_id]
+      );
+    } else {
+      await client.query(
+        `UPDATE orders
+         SET status = 'PAYMENT_APPROVED',
+             updated_at = NOW()
+         WHERE id = $1`,
+        [payment.order_id]
+      );
+    }
 
     // احفظ الحالة
     await client.query(

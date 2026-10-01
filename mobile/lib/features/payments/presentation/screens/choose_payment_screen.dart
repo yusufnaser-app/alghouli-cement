@@ -3,10 +3,11 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/widgets/primary_button.dart';
 import '../../../orders/data/order_service.dart';
 import '../../../wallet/data/wallet_service.dart';
-import 'upload_receipt_screen.dart';
+import '../data/payment_service.dart';
 
-/// تظهر بعد أن يحدد الموظف سعر الطلب (الحالة PENDING_PAYMENT_METHOD) —
-/// هنا يرى العميل السعر الرسمي لأول مرة ويختار طريقة السداد (بند 23-24).
+/// بعد تسعير الطلب يختار العميل طريقة السداد.
+/// الدفع التحويلي يسجل: العملة + المبلغ بنفس العملة + رقم العملية فقط.
+/// لا يوجد رفع صورة إيصال ولا سعر صرف.
 class ChoosePaymentScreen extends StatefulWidget {
   final String orderId;
   final double totalAmount;
@@ -23,10 +24,14 @@ class ChoosePaymentScreen extends StatefulWidget {
 
 class _ChoosePaymentScreenState extends State<ChoosePaymentScreen> {
   final _orderService = OrderService();
+  final _paymentService = PaymentService();
   final _walletService = WalletService();
-  final _partialController = TextEditingController();
+
+  final _amountController = TextEditingController();
+  final _transactionController = TextEditingController();
 
   String _paymentTerms = 'network_transfer';
+  String _currency = 'YER';
   CustomerSummary? _summary;
   bool _loading = false;
   bool _loadingSummary = true;
@@ -35,13 +40,14 @@ class _ChoosePaymentScreenState extends State<ChoosePaymentScreen> {
   @override
   void initState() {
     super.initState();
-    _partialController.text = (widget.totalAmount / 2).toStringAsFixed(0);
+    _amountController.text = widget.totalAmount.toStringAsFixed(0);
     _loadSummary();
   }
 
   @override
   void dispose() {
-    _partialController.dispose();
+    _amountController.dispose();
+    _transactionController.dispose();
     super.dispose();
   }
 
@@ -49,9 +55,7 @@ class _ChoosePaymentScreenState extends State<ChoosePaymentScreen> {
     try {
       final s = await _walletService.getSummary();
       if (mounted) setState(() => _summary = s);
-    } catch (_) {
-      // غير حرج: الشاشة تعمل بدون عرض الرصيد الحالي
-    }
+    } catch (_) {}
     if (mounted) setState(() => _loadingSummary = false);
   }
 
@@ -63,14 +67,33 @@ class _ChoosePaymentScreenState extends State<ChoosePaymentScreen> {
         );
   }
 
+  String _currencyName(String code) {
+    switch (code) {
+      case 'USD':
+        return 'دولار أمريكي';
+      case 'SAR':
+        return 'ريال سعودي';
+      default:
+        return 'ريال يمني';
+    }
+  }
+
   Future<void> _submit() async {
-    double? paidNow;
-    if (_paymentTerms == 'partial') {
-      paidNow = double.tryParse(_partialController.text.trim());
-      if (paidNow == null || paidNow <= 0 || paidNow >= widget.totalAmount) {
-        setState(() => _error = 'أدخل مبلغًا صحيحًا أقل من الإجمالي');
-        return;
-      }
+    if (_paymentTerms == 'on_account') {
+      await _choosePaymentOnly();
+      return;
+    }
+
+    final amount = double.tryParse(_amountController.text.trim());
+    if (amount == null || amount <= 0) {
+      setState(() => _error = 'أدخل مبلغ السداد بشكل صحيح');
+      return;
+    }
+
+    final transactionRef = _transactionController.text.trim();
+    if (transactionRef.isEmpty) {
+      setState(() => _error = 'أدخل رقم الحوالة أو رقم العملية');
+      return;
     }
 
     setState(() {
@@ -79,29 +102,71 @@ class _ChoosePaymentScreenState extends State<ChoosePaymentScreen> {
     });
 
     try {
-      final result = await _orderService.choosePayment(
+      // أولاً نسجل طريقة السداد للطلب.
+      final selected = await _orderService.choosePayment(
         orderId: widget.orderId,
         paymentTerms: _paymentTerms,
-        paidAmountNow: paidNow,
       );
-      if (!mounted) return;
 
-      final status = result['status'] as String?;
-      if (status == 'PENDING_PAYMENT') {
-        // فوري أو جزئي: يذهب لرفع إيصال المبلغ المطلوب سداده الآن
-        final amountToPay = _paymentTerms == 'partial' ? paidNow! : widget.totalAmount;
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => UploadReceiptScreen(
-              orderId: widget.orderId,
-              totalAmount: amountToPay,
-            ),
-          ),
-        );
-      } else {
-        // آجل: بانتظار موافقة المدير — لا حاجة لرفع إيصال الآن
-        Navigator.pop(context, true);
+      if (selected['status'] != 'PENDING_PAYMENT') {
+        throw Exception('تعذر تحويل الطلب إلى حالة الدفع');
+      }
+
+      final methods = await _paymentService.methods();
+      final method = methods.cast<Map<String, dynamic>?>().firstWhere(
+            (m) => m?['code']?.toString() == _paymentTerms,
+            orElse: () => null,
+          );
+
+      if (method == null || method['id'] == null) {
+        throw Exception('طريقة الدفع غير متاحة حاليًا');
+      }
+
+      final now = DateTime.now();
+      final transferDate =
+          '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+
+      await _paymentService.submit(
+        orderId: widget.orderId,
+        methodId: method['id'].toString(),
+        amount: amount,
+        currency: _currency,
+        transferDate: transferDate,
+        transactionRef: transactionRef,
+      );
+
+      if (!mounted) return;
+      Navigator.pop(context, true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تم إرسال بيانات السداد ورقم العملية للمراجعة'),
+          backgroundColor: AppColors.success,
+          duration: Duration(seconds: 4),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _choosePaymentOnly() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final result = await _orderService.choosePayment(
+        orderId: widget.orderId,
+        paymentTerms: 'on_account',
+      );
+
+      if (!mounted) return;
+      Navigator.pop(context, true);
+      if (result['status'] == 'PENDING_ADMIN_APPROVAL') {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('تم إرسال طلب الدفع تحت الحساب — بانتظار موافقة المؤسسة'),
@@ -132,7 +197,6 @@ class _ChoosePaymentScreenState extends State<ChoosePaymentScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // قيمة الطلب الرسمية — تظهر للعميل هنا لأول مرة
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -142,14 +206,19 @@ class _ChoosePaymentScreenState extends State<ChoosePaymentScreen> {
                 ),
                 child: Column(
                   children: [
-                    const Text('قيمة طلبك',
-                        style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                    const Text(
+                      'قيمة الطلب',
+                      style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                    ),
                     const SizedBox(height: 6),
-                    Text('${_fmt(widget.totalAmount)} ريال',
-                        style: const TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.success)),
+                    Text(
+                      '${_fmt(widget.totalAmount)} ريال يمني',
+                      style: const TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.success,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -167,8 +236,10 @@ class _ChoosePaymentScreenState extends State<ChoosePaymentScreen> {
                       const Icon(Icons.error_outline, color: AppColors.danger),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: Text(_error!,
-                            style: const TextStyle(color: AppColors.danger)),
+                        child: Text(
+                          _error!,
+                          style: const TextStyle(color: AppColors.danger),
+                        ),
                       ),
                     ],
                   ),
@@ -176,12 +247,91 @@ class _ChoosePaymentScreenState extends State<ChoosePaymentScreen> {
                 const SizedBox(height: 16),
               ],
 
-              const Text('طريقة السداد',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const Text(
+                'طريقة السداد',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 12),
-              _option('network_transfer', '🏦 تحويل عبر شبكة الصرافة', 'التحويل إلى الحساب المحدد ثم رفع الإيصال', Icons.account_balance),
-              _option('e_wallet', '📱 محفظة إلكترونية', 'الإيداع في المحفظة ثم رفع الإيصال', Icons.account_balance_wallet),
-              _option('on_account', '📝 الدفع تحت الحساب', 'يحتاج مراجعة واعتماد المؤسسة', Icons.receipt_long),
+              _option(
+                'network_transfer',
+                '🏦 تحويل عبر شبكة الصرافة',
+                'أدخل مبلغ التحويل ورقم العملية فقط',
+                Icons.account_balance,
+              ),
+              _option(
+                'e_wallet',
+                '📱 محفظة إلكترونية',
+                'أدخل مبلغ الإيداع ورقم العملية فقط',
+                Icons.account_balance_wallet,
+              ),
+              _option(
+                'on_account',
+                '📝 الدفع تحت الحساب',
+                'يحتاج مراجعة واعتماد المؤسسة',
+                Icons.receipt_long,
+              ),
+
+              if (!isCredit) ...[
+                const SizedBox(height: 16),
+                const Text(
+                  'عملة السداد',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value: _currency,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.currency_exchange),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'YER', child: Text('ريال يمني (YER)')),
+                    DropdownMenuItem(value: 'USD', child: Text('دولار أمريكي (USD)')),
+                    DropdownMenuItem(value: 'SAR', child: Text('ريال سعودي (SAR)')),
+                  ],
+                  onChanged: (v) {
+                    if (v == null) return;
+                    setState(() {
+                      _currency = v;
+                      if (v == 'YER') {
+                        _amountController.text =
+                            widget.totalAmount.toStringAsFixed(0);
+                      } else {
+                        // لا يوجد تحويل تلقائي؛ العميل يدخل المبلغ بالعملة المختارة.
+                        _amountController.clear();
+                      }
+                    });
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _amountController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: 'مبلغ السداد (${_currencyName(_currency)})',
+                    prefixIcon: const Icon(Icons.payments),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _transactionController,
+                  keyboardType: TextInputType.text,
+                  decoration: const InputDecoration(
+                    labelText: 'رقم الحوالة / رقم العملية',
+                    prefixIcon: Icon(Icons.numbers),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'لا ترفع صورة إيصال. يكفي إدخال رقم العملية.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
 
               if (_paymentTerms == 'network_transfer')
                 Container(
@@ -194,11 +344,14 @@ class _ChoosePaymentScreenState extends State<ChoosePaymentScreen> {
                   child: const Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('بيانات التحويل', style: TextStyle(fontWeight: FontWeight.bold)),
+                      Text(
+                        'بيانات التحويل',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
                       SizedBox(height: 6),
                       Text('اسم المستفيد: عمار حسين مقبل مطر الغولي'),
                       SizedBox(height: 4),
-                      Text('بعد التحويل أرفق رقم العملية/الإيصال ليتم اعتماد الدفع.'),
+                      Text('بعد التحويل أدخل رقم العملية فقط ليتم اعتماد الدفع.'),
                     ],
                   ),
                 ),
@@ -211,20 +364,10 @@ class _ChoosePaymentScreenState extends State<ChoosePaymentScreen> {
                     color: AppColors.info.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Text('المحفظة الإلكترونية: أتمم الإيداع ثم ارفع إيصال العملية من شاشة الدفع.'),
-                ),
-
-              if (_paymentTerms == 'partial') ...[
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _partialController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'المبلغ المدفوع الآن (ريال)',
-                    prefixIcon: Icon(Icons.money),
+                  child: const Text(
+                    'المحفظة الإلكترونية: أتمم الإيداع ثم أدخل رقم العملية فقط.',
                   ),
                 ),
-              ],
 
               if (isCredit && !_loadingSummary && _summary != null) ...[
                 const SizedBox(height: 16),
@@ -238,8 +381,10 @@ class _ChoosePaymentScreenState extends State<ChoosePaymentScreen> {
                   child: Column(
                     children: [
                       _row('رصيدك الحالي', '${_fmt(currentBalance)} ر.ي'),
-                      _row('الحد الائتماني',
-                          creditLimit == 0 ? 'غير محدود' : '${_fmt(creditLimit)} ر.ي'),
+                      _row(
+                        'الحد الائتماني',
+                        creditLimit == 0 ? 'غير محدود' : '${_fmt(creditLimit)} ر.ي',
+                      ),
                     ],
                   ),
                 ),
@@ -247,8 +392,8 @@ class _ChoosePaymentScreenState extends State<ChoosePaymentScreen> {
 
               const SizedBox(height: 24),
               PrimaryButton(
-                text: _paymentTerms == 'on_account' ? 'إرسال طلب تحت الحساب' : 'متابعة الدفع',
-                icon: _paymentTerms == 'on_account' ? Icons.send : Icons.check_circle,
+                text: isCredit ? 'إرسال طلب تحت الحساب' : 'إرسال بيانات السداد',
+                icon: isCredit ? Icons.send : Icons.check_circle,
                 isLoading: _loading,
                 onPressed: _submit,
               ),
@@ -277,22 +422,34 @@ class _ChoosePaymentScreenState extends State<ChoosePaymentScreen> {
         ),
         child: Row(
           children: [
-            Icon(icon, color: selected ? AppColors.primary : AppColors.textSecondary),
+            Icon(
+              icon,
+              color: selected ? AppColors.primary : AppColors.textSecondary,
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title,
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: selected ? AppColors.primary : null)),
-                  Text(subtitle,
-                      style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: selected ? AppColors.primary : null,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
                 ],
               ),
             ),
-            if (selected) const Icon(Icons.check_circle, color: AppColors.primary),
+            if (selected)
+              const Icon(Icons.check_circle, color: AppColors.primary),
           ],
         ),
       ),
