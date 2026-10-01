@@ -292,6 +292,18 @@ const createTables = async () => {
       ALTER COLUMN payment_currency SET NOT NULL
     `);
 
+    // قيد القيم المسموحة للعملة
+    await client.query(`
+      ALTER TABLE payments
+      DROP CONSTRAINT IF EXISTS payments_currency_check
+    `);
+
+    await client.query(`
+      ALTER TABLE payments
+      ADD CONSTRAINT payments_currency_check
+      CHECK (payment_currency IN ('YER','USD','SAR'))
+    `);
+
     await client.query('COMMIT');
     console.log('✅ تم إنشاء جميع الجداول بنجاح');
   } catch (err) {
