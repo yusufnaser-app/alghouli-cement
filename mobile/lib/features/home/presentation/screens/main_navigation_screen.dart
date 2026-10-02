@@ -5,6 +5,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../cart/data/cart_manager.dart';
 import '../../../cart/presentation/screens/cart_screen.dart';
 import '../../../driver/presentation/screens/driver_home_screen.dart';
+import '../../../admin/presentation/screens/admin_home_screen.dart';
 import '../../../orders/presentation/screens/orders_list_screen.dart';
 import '../../../profile/presentation/screens/profile_screen.dart';
 import 'home_screen.dart';
@@ -37,7 +38,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       final roles = (data['roles'] as List?)?.map((e) => e.toString()).toList() ?? [];
       if (mounted) {
         setState(() {
-          _role = roles.contains('driver') ? 'driver' : 'customer';
+          if (roles.contains('admin') || roles.contains('accountant') || roles.contains('sales') || roles.contains('transport') || roles.contains('loading')) {
+            _role = 'admin';
+          } else if (roles.contains('driver')) {
+            _role = 'driver';
+          } else {
+            _role = 'customer';
+          }
           _checking = false;
         });
       }
@@ -72,6 +79,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
+    }
+
+    if (_role == 'admin') {
+      return const AdminHomeScreen();
     }
 
     if (_role == 'driver') {
