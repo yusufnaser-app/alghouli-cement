@@ -239,3 +239,53 @@ extension AdminServiceV2 on AdminService {
     } on DioException catch (e) { throw Exception(handleApiError(e)); }
   }
 }
+
+extension AdminServiceUsers on AdminService {
+  ApiClient get _api => ApiClient();
+
+  Future<List<Map<String, dynamic>>> adminUsers({String? userType, String? status, String? search, String? role}) async {
+    try {
+      final res = await _api.get('/admin/users', query: {
+        if (userType != null) 'user_type': userType,
+        if (status != null) 'status': status,
+        if (search != null && search.isNotEmpty) 'search': search,
+        if (role != null) 'role': role,
+      });
+      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  Future<List<Map<String, dynamic>>> adminRoles() async {
+    try {
+      final res = await _api.get('/admin/roles');
+      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  Future<Map<String, dynamic>> createUser(Map<String, dynamic> data) async {
+    try {
+      final res = await _api.post('/admin/users', data: data);
+      return Map<String, dynamic>.from(res.data['data'] as Map);
+    } on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  Future<void> updateUser(String id, Map<String, dynamic> data) async {
+    try { await _api.patch('/admin/users/$id', data: data); }
+    on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  Future<void> setUserRoles(String id, List<String> roles) async {
+    try { await _api.patch('/admin/users/$id/roles', data: {'roles': roles}); }
+    on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  Future<void> setUserStatus(String id, String status) async {
+    try { await _api.patch('/admin/users/$id/status', data: {'status': status}); }
+    on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  Future<void> resetUserPassword(String id, String password) async {
+    try { await _api.post('/admin/users/$id/reset-password', data: {'password': password}); }
+    on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+}
