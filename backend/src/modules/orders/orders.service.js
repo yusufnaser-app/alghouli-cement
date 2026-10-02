@@ -1,6 +1,8 @@
 const { pool, query } = require('../../config/db');
 const transportService = require('./transport.service');
 const ledgerService = require('../customers/ledger.service');
+const engine = require('../accounting/accounting.engine');
+const { logAudit } = require('../audit/audit.service');
 const ceilingsService = require('../ceilings/ceilings.service');
 
 const generateOrderNumber = async () => {
@@ -272,27 +274,40 @@ const setOrderPricing = async (orderId, staffUserId, data) => {
 
     const existingItems = await client.query(`SELECT * FROM order_items WHERE order_id = $1`, [orderId]);
     const priceById = new Map((data.items || []).map((i) => [i.orderItemId, i]));
+    const { toMinor, fromMinor } = engine;
+    const currency = engine.assertCurrency(data.currency || order.currency || 'YER');
+    const transportMode = ['none', 'separate', 'included'].includes(data.transportMode)
+      ? data.transportMode : (toMinor(data.transportAmount || 0) > 0 ? 'separate' : 'none');
 
-    let subtotal = 0;
+    // الحساب بوحدات صحيحة: سعر الكيس × الكمية − الخصم (الخصم على الأسمنت فقط ومرة واحدة)
+    let subtotalM = 0;
     let bySourceAmount = {};
+    const lines = [];
     for (const item of existingItems.rows) {
       const input = priceById.get(item.id);
       if (!input) { const e = new Error(`سعر مفقود لعنصر الطلب ${item.id}`); e.status = 400; throw e; }
-      const unitPrice = parseFloat(input.unitPrice);
-      const discount = parseFloat(input.discount || 0);
-      if (!(unitPrice >= 0)) { const e = new Error('سعر غير صحيح'); e.status = 400; throw e; }
-      const lineTotal = unitPrice * parseFloat(item.quantity) - discount;
-      subtotal += lineTotal;
-      bySourceAmount[item.source_id] = (bySourceAmount[item.source_id] || 0) + lineTotal;
-
+      const unitM = toMinor(input.unitPrice);
+      const discM = toMinor(input.discount || 0);
+      if (unitM < 0) { const e = new Error('سعر غير صحيح'); e.status = 400; throw e; }
+      const grossM = engine.divRound(BigInt(unitM) * BigInt(toMinor(item.quantity)), 100n);
+      if (discM < 0 || discM > grossM) { const e = new Error('الخصم غير صالح أو أكبر من قيمة الصنف'); e.status = 400; throw e; }
+      const lineM = grossM - discM;
+      subtotalM += lineM;
+      bySourceAmount[item.source_id] = (bySourceAmount[item.source_id] || 0) + lineM / 100;
+      lines.push({ id: item.id, unitM, discM, lineM, old: { unit_price: item.unit_price, discount: item.discount } });
+    }
+    for (const l of lines) {
       await client.query(
         `UPDATE order_items SET unit_price = $1, discount = $2, line_total = $3 WHERE id = $4`,
-        [unitPrice, discount, lineTotal, item.id]
+        [fromMinor(l.unitM), fromMinor(l.discM), fromMinor(l.lineM), l.id]
       );
     }
 
-    const transportAmount = parseFloat(data.transportAmount || 0);
-    const totalAmount = subtotal + transportAmount;
+    // السعر الشامل للنقل: لا يُضاف نقل ثانٍ على الفاتورة. السعر بدون نقل: يُضاف فوقه.
+    const transportM = transportMode === 'separate' ? toMinor(data.transportAmount || 0) : 0;
+    const subtotal = fromMinor(subtotalM);
+    const transportAmount = fromMinor(transportM);
+    const totalAmount = fromMinor(subtotalM + transportM);
 
     // فحص سقوف القيمة الآن بعد معرفتها (تحذير فقط: لا يوقف الموظف، فهو مخوَّل بالفعل)
     try {
@@ -317,10 +332,18 @@ const setOrderPricing = async (orderId, staffUserId, data) => {
          transport_beneficiary = $5::text,
          transport_beneficiary_trader_id =
            CASE WHEN $5::text = 'trader' THEN customer_id ELSE NULL END,
+         currency = $7, transport_mode = $8,
          updated_at = NOW()
        WHERE id = $6`,
-      [subtotal, transportAmount, totalAmount, staffUserId, beneficiary, orderId]
+      [subtotal, transportAmount, totalAmount, staffUserId, beneficiary, orderId, currency, transportMode]
     );
+    await logAudit(client, {
+      userId: staffUserId, action: 'ORDER_PRICED', entityType: 'orders', entityId: orderId, entityRef: order.order_number,
+      oldValues: { items: lines.map((l) => l.old), subtotal: order.subtotal, shipping_amount: order.shipping_amount },
+      newValues: { items: lines.map((l) => ({ id: l.id, unit_price: fromMinor(l.unitM), discount: fromMinor(l.discM) })),
+        subtotal, shipping_amount: transportAmount, total_amount: totalAmount, currency, transport_mode: transportMode, transport_beneficiary: beneficiary },
+      reason: data.reason || 'تحديد سعر الطلب',
+    });
 
     await client.query(
       `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
@@ -339,7 +362,7 @@ const setOrderPricing = async (orderId, staffUserId, data) => {
         await client.query(
           `INSERT INTO notifications (user_id, title_ar, body_ar, type, reference_type, reference_id)
            VALUES ($1, 'تم تحديد قيمة طلبك', $2, 'ORDER_PRICED', 'orders', $3)`,
-          [cust.rows[0].user_id, `إشعار قيمة الطلب رقم ${order.order_number}: ${totalAmount.toLocaleString('en-US')} ريال. يرجى اختيار طريقة السداد.`, orderId]
+          [cust.rows[0].user_id, `إشعار قيمة الطلب رقم ${order.order_number}: ${Number(totalAmount).toLocaleString('en-US')} ${currency}. يرجى اختيار طريقة السداد.`, orderId]
         );
       }
     } catch (notifyErr) {
@@ -348,7 +371,7 @@ const setOrderPricing = async (orderId, staffUserId, data) => {
     }
 
     await client.query('COMMIT');
-    return { id: orderId, status: 'PENDING_PAYMENT_METHOD', subtotal, shipping_amount: transportAmount, total_amount: totalAmount };
+    return { id: orderId, status: 'PENDING_PAYMENT_METHOD', subtotal: Number(subtotal), shipping_amount: Number(transportAmount), total_amount: Number(totalAmount), currency, transport_mode: transportMode };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -386,6 +409,7 @@ const choosePaymentMethod = async (orderId, userId, data) => {
     const totalAmount = parseFloat(order.total_amount || 0);
     let paidNow = 0;
     let creditAmount = 0;
+    const cm = (v) => engine.toMinor(v);
 
     if (paymentTerms === 'on_account') {
       paidNow = parseFloat(data.paidAmountNow || 0);
@@ -399,13 +423,13 @@ const choosePaymentMethod = async (orderId, userId, data) => {
         e.status = 400;
         throw e;
       }
-      creditAmount = totalAmount - paidNow;
+      creditAmount = parseFloat(engine.fromMinor(cm(totalAmount) - cm(paidNow)));
     } else if (paymentTerms === 'partial') {
       paidNow = parseFloat(data.paidAmountNow || 0);
       if (!(paidNow > 0 && paidNow < totalAmount)) {
         const e = new Error('الدفع الجزئي يجب أن يكون أكبر من صفر وأقل من الإجمالي'); e.status = 400; throw e;
       }
-      creditAmount = totalAmount - paidNow;
+      creditAmount = parseFloat(engine.fromMinor(cm(totalAmount) - cm(paidNow)));
     } else if (['network_transfer', 'e_wallet'].includes(paymentTerms)) {
       paidNow = totalAmount;
       creditAmount = 0;
@@ -644,6 +668,11 @@ const approveCreditOrder = async (orderId, adminId) => {
        credit_approved_at = NOW(), paid_amount = 0, remaining_amount = total_amount, updated_at = NOW() WHERE id = $2`,
       [adminId, orderId]
     );
+    // لا قيد مالي هنا: القيد يُنشأ عند التحميل الفعلي فقط (كان يُقيَّد هنا مدين ثم يُقيَّد البيع كاملًا عند التحميل = ازدواج).
+    await logAudit(client, {
+      userId: adminId, action: 'CREDIT_ORDER_APPROVED', entityType: 'orders', entityId: orderId, entityRef: order.order_number,
+      oldValues: { status: 'PENDING_ADMIN_APPROVAL' }, newValues: { status: 'PAYMENT_APPROVED', credit_amount: order.credit_amount },
+    });
     await client.query(
       `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
        VALUES ($1, 'PENDING_ADMIN_APPROVAL', 'PAYMENT_APPROVED', $2, 'اعتماد الدفع تحت الحساب')`,
@@ -704,6 +733,11 @@ const rejectCreditOrder = async (orderId, adminId, reason) => {
       );
     }
 
+    // لا يوجد قيد مالي قبل التحميل، فلا شيء يُعكس في الدفتر.
+    await logAudit(client, {
+      userId: adminId, action: 'CREDIT_ORDER_REJECTED', entityType: 'orders', entityId: orderId,
+      oldValues: { status: order.status }, newValues: { status: 'CREDIT_REJECTED' }, reason,
+    });
 
     await client.query(
       `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
@@ -814,7 +848,8 @@ const cancelOrder = async (orderId, userId, reason) => {
     const r = await client.query(
       `SELECT o.id, o.status, o.customer_id, o.credit_amount
        FROM orders o JOIN customers c ON c.id = o.customer_id
-       WHERE o.id = $1 AND c.user_id = $2`,
+       WHERE o.id = $1 AND c.user_id = $2
+       FOR UPDATE OF o`,
       [orderId, userId]
     );
     if (r.rows.length === 0) {
@@ -843,6 +878,11 @@ const cancelOrder = async (orderId, userId, reason) => {
       `UPDATE orders SET status = 'CANCELLED', updated_at = NOW() WHERE id = $1`,
       [orderId]
     );
+    // قبل التحميل لا يوجد قيد مالي. الدفعات المعتمدة (إن وُجدت) تبقى رصيدًا دائنًا للعميل ولا تُحذف.
+    await logAudit(client, {
+      userId, action: 'ORDER_CANCELLED', entityType: 'orders', entityId: orderId,
+      oldValues: { status: order.status }, newValues: { status: 'CANCELLED' }, reason: reason || 'إلغاء',
+    });
     await client.query(
       `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
        VALUES ($1, $2, 'CANCELLED', $3, $4)`,

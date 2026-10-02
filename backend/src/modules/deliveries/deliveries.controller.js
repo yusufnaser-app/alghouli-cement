@@ -25,7 +25,16 @@ const updateStatus = asyncHandler(async (req, res) => {
   return response.success(res, result, 'تم تحديث حالة الرحلة');
 });
 
+const { query } = require('../../config/db');
 const listByOrder = asyncHandler(async (req, res) => {
+  const isStaff = ['admin', 'transport', 'sales', 'accountant', 'loading', 'auditor'].some((r) => (req.roles || []).includes(r));
+  if (!isStaff) {
+    const own = await query(
+      `SELECT 1 FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.id = $1 AND c.user_id = $2
+       UNION SELECT 1 FROM deliveries d JOIN drivers dr ON dr.id = d.driver_id WHERE d.order_id = $1 AND dr.user_id = $2 LIMIT 1`,
+      [req.params.orderId, req.user.id]);
+    if (!own.rows.length) return response.error(res, 'غير مصرح', 403, 'FORBIDDEN');
+  }
   const deliveries = await service.listByOrder(req.params.orderId);
   return response.success(res, deliveries, 'رحلات الطلب');
 });

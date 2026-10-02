@@ -28,6 +28,7 @@ import Reports from './pages/reports/Reports';
 import Settings from './pages/settings/Settings';
 import Deliveries from './pages/deliveries/Deliveries';
 import AccountingFulfillment from './pages/accountingFulfillment/AccountingFulfillment';
+import AccountingAudit from './pages/accountingAudit/AccountingAudit';
 import './index.css';
 
 function ProtectedRoute({ children }) {
@@ -65,6 +66,7 @@ export default function App() {
           <Route path="/products" element={<ProtectedRoute><Products /></ProtectedRoute>} />
           <Route path="/sources" element={<ProtectedRoute><Sources /></ProtectedRoute>} />
           <Route path="/categories" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
+          <Route path="/accounting-audit" element={<ProtectedRoute><AccountingAudit /></ProtectedRoute>} />
           <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
           <Route path="/pending-credit" element={<ProtectedRoute><PendingCredit /></ProtectedRoute>} />
           <Route path="/payments" element={<ProtectedRoute><Payments /></ProtectedRoute>} />

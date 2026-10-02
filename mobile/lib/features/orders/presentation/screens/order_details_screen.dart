@@ -199,7 +199,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                             ),
                           ),
                           if (item['line_total'] != null)
-                            Text('${_fmt(item['line_total'])} ريال',
+                            Text('${_fmt(item['line_total'])} ${o['currency'] ?? 'YER'}',
                                 style:
                                     const TextStyle(fontWeight: FontWeight.bold)),
                         ],
@@ -213,9 +213,9 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
             _section('الترحيل المحاسبي', [
               _row('حالة الترحيل', 'تم الترحيل'),
               _row('الكمية المعتمدة', '${o['accounting_posting']['loaded_quantity'] ?? o['final_loaded_quantity'] ?? ''}'),
-              _row('قيمة البيع الفعلية', '${_fmt(o['accounting_posting']['customer_debit'])} ريال'),
-              _row('المدفوع', '${_fmt(o['accounting_posting']['customer_payment_credit'])} ريال'),
-              _row('أجور السائق', '${_fmt(o['accounting_posting']['driver_transport_debit'])} ريال'),
+              _row('قيمة البيع الفعلية', '${_fmt(o['accounting_posting']['customer_debit'])} ${o['currency'] ?? 'YER'}'),
+              _row('المدفوع', '${_fmt(o['accounting_posting']['customer_payment_credit'])} ${o['currency'] ?? 'YER'}'),
+              _row('أجور السائق', '${_fmt(o['accounting_posting']['driver_transport_debit'])} ${o['currency'] ?? 'YER'}'),
             ])
           else if (o['accounting_status'] != null && o['accounting_status'] != 'POSTED')
             _section('الترحيل المحاسبي', [
@@ -224,13 +224,13 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
 
           if (hasPrice)
             _section('الملخص المالي', [
-              _row('الإجمالي الفرعي', '${_fmt(o['subtotal'])} ريال'),
-              _row('الخصم', '${_fmt(o['discount_amount'])} ريال'),
-              _row('النقل', '${_fmt(o['shipping_amount'])} ريال'),
+              _row('الإجمالي الفرعي', '${_fmt(o['subtotal'])} ${o['currency'] ?? 'YER'}'),
+              _row('الخصم', '${_fmt(o['discount_amount'])} ${o['currency'] ?? 'YER'}'),
+              _row('النقل', '${_fmt(o['shipping_amount'])} ${o['currency'] ?? 'YER'}'),
               const Divider(height: 16),
-              _row('الإجمالي', '${_fmt(o['total_amount'])} ريال', bold: true),
-              _row('المدفوع', '${_fmt(o['paid_amount'])} ريال'),
-              _row('المتبقي', '${_fmt(o['remaining_amount'])} ريال',
+              _row('الإجمالي', '${_fmt(o['total_amount'])} ${o['currency'] ?? 'YER'}', bold: true),
+              _row('المدفوع', '${_fmt(o['paid_amount'])} ${o['currency'] ?? 'YER'}'),
+              _row('المتبقي', '${_fmt(o['remaining_amount'])} ${o['currency'] ?? 'YER'}',
                   color: AppColors.danger),
             ])
           else

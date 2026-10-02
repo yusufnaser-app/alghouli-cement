@@ -27,8 +27,17 @@ const getFullOrder = async (orderId, userId, userRoles = []) => {
   }
   const order = orderResult.rows[0];
 
-  if (isCustomer && order.customer_user_id !== userId) {
-    const e = new Error('غير مصرح'); e.status = 403; throw e;
+  // منع IDOR: غير الموظفين يرون طلباتهم فقط (العميل/التاجر: المالك — السائق: طلبات فاكسه فقط)
+  const isStaff = ['admin', 'accountant', 'sales', 'transport', 'loading', 'auditor'].some((r) => userRoles.includes(r));
+  if (!isStaff) {
+    let allowed = (isCustomer || isTrader) && order.customer_user_id === userId;
+    if (!allowed && userRoles.includes('driver')) {
+      const d = await query(
+        `SELECT 1 FROM loading_faxes f JOIN drivers dr ON dr.id = f.driver_id
+         WHERE f.order_id = $1 AND dr.user_id = $2 LIMIT 1`, [orderId, userId]);
+      allowed = d.rows.length > 0;
+    }
+    if (!allowed) { const e = new Error('غير مصرح'); e.status = 403; throw e; }
   }
 
   const itemsResult = await query(

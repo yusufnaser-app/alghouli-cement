@@ -9,6 +9,7 @@ const setup = (startBalance) => {
     query: async (sql, params = []) => {
       log.push({ sql, params });
       if (/FOR UPDATE/.test(sql)) return { rows: [{ id: 'd1', current_balance: String(startBalance) }] };
+      if (/^\s*INSERT INTO driver_ledger/.test(sql)) return { rows: [{ id: 'e1', driver_id: params[0], debit: params[4], credit: params[5] }] };
       return { rows: [] };
     },
     release() {},
@@ -53,4 +54,14 @@ test('سائق غير موجود: ROLLBACK وخطأ 404', async () => {
   const svc = require('../src/modules/drivers/driver-ledger.service');
   await assert.rejects(() => svc.recordPayment('x', { amount: 1 }, 'u'), (e) => e.status === 404);
   assert.ok(log.includes('ROLLBACK'));
+});
+
+test('السلفة والخصم والدفعة تُسجَّل كلها دائنًا (credit) وليس مدينًا — الإشارة متسقة مع الرصيد', async () => {
+  for (const fn of ['recordPayment', 'recordAdvance', 'recordDeduction']) {
+    const { svc, log } = setup(1000);
+    await svc[fn]('d1', { amount: 100 }, 'u1');
+    const ins = log.find((l) => /^\s*INSERT INTO driver_ledger/.test(l.sql));
+    assert.strictEqual(ins.params[4], '0.00', `${fn}: debit`);
+    assert.strictEqual(ins.params[5], '100.00', `${fn}: credit`);
+  }
 });

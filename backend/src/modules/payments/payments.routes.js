@@ -1,6 +1,6 @@
 const express = require('express');
 const controller = require('./payments.controller');
-const { authenticate, requireRoles } = require('../../middlewares/auth');
+const { authenticate, requirePermission } = require('../../middlewares/auth');
 
 const router = express.Router();
 
@@ -10,11 +10,12 @@ router.get('/methods', controller.listMethods);
 // باقي المسارات - تحتاج توثيق
 router.use(authenticate);
 
-router.post('/', controller.submit);
+router.post('/', requirePermission('payments.create'), controller.submit);
 router.get('/me', controller.myPayments);
-router.get('/pending', requireRoles('accountant', 'admin'), controller.pending);
+router.get('/pending', requirePermission('payments.view'), controller.pending);
 router.get('/:id', controller.getById);
-router.patch('/:id/approve', requireRoles('accountant', 'admin'), controller.approve);
-router.patch('/:id/reject', requireRoles('accountant', 'admin'), controller.reject);
+router.patch('/:id/approve', requirePermission('payments.approve'), controller.approve);
+router.patch('/:id/reject', requirePermission('payments.reject'), controller.reject);
+router.patch('/:id/reverse', requirePermission('payments.reverse'), controller.reverse);
 
 module.exports = router;
