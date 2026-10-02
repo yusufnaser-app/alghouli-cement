@@ -48,12 +48,15 @@ class _S extends State<AdminSettingsScreen> {
   Future<void> _save() async {
     setState(() { _saving = true; _error = null; });
     try {
-      final items = _settings.map((s) => {
+      // نبني Map بالشكل الذي يتوقعه ApiClient
+      final settingsList = _settings.map((s) => {
         'key': s['key'],
         'value': _ctrls[s['key'].toString()]!.text,
         'groupName': s['group_name'] ?? 'general',
       }).toList();
-      await _svc.updateSettings(items);
+
+      await _svc.updateSettings({'settings': settingsList});
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('✅ تم الحفظ'), backgroundColor: AppColors.success),
