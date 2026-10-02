@@ -178,7 +178,7 @@ class _S extends State<AdminUsersScreen> {
       child: InkWell(
         onTap: () async {
           await Navigator.push(context, MaterialPageRoute(
-            builder: (_) => AdminUserEditScreen(user: u)));
+            builder: (_) => AdminUserEditScreen(user: Map<String, dynamic>.from(u))));
           _load();
         },
         borderRadius: BorderRadius.circular(10),
