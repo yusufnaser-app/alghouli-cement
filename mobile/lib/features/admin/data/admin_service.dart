@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 import '../../../core/network/api_client.dart';
 
 class AdminService {
-  final _client = ApiClient();
+  final ApiClient _client = ApiClient(); // made public for extensions
 
   // ═══ Dashboard ═══
   Future<Map<String, dynamic>> dashboard() async {
@@ -161,6 +161,153 @@ class AdminService {
   Future<Map<String, dynamic>> integrityCheck() async {
     try {
       final res = await _client.get('/accounting/integrity-check');
+      return Map<String, dynamic>.from(res.data['data'] as Map);
+    } on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+}
+
+// ═══════════════ v2 extensions ═══════════════
+
+extension AdminServiceV2 on AdminService {
+  // Bulk Faxes
+  Future<List<Map<String, dynamic>>> bulkFaxSuggestions({String? driverType}) async {
+    try {
+      final res = await _client.get('/bulk-fax/suggestions',
+          query: {if (driverType != null) 'driverType': driverType});
+      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+
+  Future<Map<String, dynamic>> createBulkFaxes(List<Map<String, dynamic>> items) async {
+    try {
+      final res = await _client.post('/bulk-fax/create', data: {'items': items});
+      return Map<String, dynamic>.from(res.data['data'] as Map);
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+
+  // Reports
+  Future<Map<String, dynamic>> reportsSummary() async {
+    try {
+      final res = await _client.get('/reports/summary');
+      return Map<String, dynamic>.from(res.data['data'] as Map);
+    } on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  Future<List<Map<String, dynamic>>> reportsDaily() async {
+    try {
+      final res = await _client.get('/reports/daily');
+      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  Future<List<Map<String, dynamic>>> reportsBySource() async {
+    try {
+      final res = await _client.get('/reports/by-source');
+      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  // Settings
+  Future<List<Map<String, dynamic>>> settingsList() async {
+    try {
+      final res = await _client.get('/settings');
+      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  Future<void> updateSettings(Map<String, dynamic> data) async {
+    try { await _client.put('/settings', data: data); }
+    on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  // Drivers admin
+  Future<List<Map<String, dynamic>>> driversAdmin() async {
+    try {
+      final res = await _client.get('/drivers-admin');
+      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  Future<Map<String, dynamic>> driverStatement(String id) async {
+    try {
+      final res = await _client.get('/drivers-admin/$id/statement');
+      return Map<String, dynamic>.from(res.data['data'] as Map);
+    } on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+}
+
+extension AdminServiceV2 on AdminService {
+  ApiClient get _api => ApiClient();
+
+  // ═══ Bulk Faxes ═══
+  Future<List<Map<String, dynamic>>> bulkFaxSuggestions({String? driverType}) async {
+    try {
+      final res = await _api.get('/bulk-fax/suggestions',
+          query: {if (driverType != null) 'driverType': driverType});
+      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  Future<Map<String, dynamic>> createBulkFaxes(List<Map<String, dynamic>> items) async {
+    try {
+      final res = await _api.post('/bulk-fax/create', data: {'items': items});
+      return Map<String, dynamic>.from(res.data['data'] as Map);
+    } on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  // ═══ Reports ═══
+  Future<Map<String, dynamic>> reportsSummary({String? from, String? to}) async {
+    try {
+      final res = await _api.get('/reports/summary',
+          query: {if (from != null) 'from': from, if (to != null) 'to': to});
+      return Map<String, dynamic>.from(res.data['data'] as Map);
+    } on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  Future<List<Map<String, dynamic>>> reportsDaily({String? from, String? to}) async {
+    try {
+      final res = await _api.get('/reports/daily',
+          query: {if (from != null) 'from': from, if (to != null) 'to': to});
+      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  Future<List<Map<String, dynamic>>> reportsBySource() async {
+    try {
+      final res = await _api.get('/reports/by-source');
+      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  // ═══ Settings ═══
+  Future<List<Map<String, dynamic>>> settingsList() async {
+    try {
+      final res = await _api.get('/settings');
+      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  Future<void> updateSettings(List<Map<String, dynamic>> settings) async {
+    try {
+      await _api.put('/settings', data: {'settings': settings});
+    } on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  // ═══ Driver Admin ═══
+  Future<List<Map<String, dynamic>>> driversAdmin() async {
+    try {
+      final res = await _api.get('/drivers-admin');
+      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  Future<Map<String, dynamic>> driverStatement(String id) async {
+    try {
+      final res = await _api.get('/drivers-admin/$id/statement');
       return Map<String, dynamic>.from(res.data['data'] as Map);
     } on DioException catch (e) { throw Exception(handleApiError(e)); }
   }

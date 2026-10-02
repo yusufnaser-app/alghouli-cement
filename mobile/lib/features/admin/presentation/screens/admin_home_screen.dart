@@ -6,6 +6,7 @@ import '../widgets/admin_icon_tile.dart';
 import 'admin_pending_orders_screen.dart';
 import 'admin_pending_payments_screen.dart';
 import 'admin_faxes_screen.dart';
+import 'admin_bulk_fax_screen.dart';
 import 'admin_create_fax_screen.dart';
 import 'admin_customers_screen.dart';
 import 'admin_drivers_screen.dart';
@@ -187,6 +188,12 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
               label: 'فاكس جديد',
               color: AppColors.accent,
               onTap: () => _open(const AdminCreateFaxScreen()),
+            ),
+            AdminIconTile(
+              icon: Icons.playlist_add,
+              label: 'فاكسات جماعية',
+              color: AppColors.primary,
+              onTap: () => _open(const AdminBulkFaxScreen()),
             ),
             AdminIconTile(
               icon: Icons.people,
