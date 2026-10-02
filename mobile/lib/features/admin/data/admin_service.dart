@@ -4,6 +4,7 @@ import '../../../core/network/api_client.dart';
 class AdminService {
   final _client = ApiClient();
 
+  // ═══ Dashboard ═══
   Future<Map<String, dynamic>> dashboard() async {
     try {
       final res = await _client.get('/admin/dashboard');
@@ -13,6 +14,7 @@ class AdminService {
     }
   }
 
+  // ═══ Orders ═══
   Future<List<Map<String, dynamic>>> pendingPricing() async {
     try {
       final res = await _client.get('/orders/admin/pending-pricing');
@@ -34,6 +36,16 @@ class AdminService {
     }
   }
 
+  Future<List<Map<String, dynamic>>> allOrders() async {
+    try {
+      final res = await _client.get('/admin/orders');
+      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+
+  // ═══ Payments ═══
   Future<List<Map<String, dynamic>>> pendingPayments() async {
     try {
       final res = await _client.get('/payments/pending');
@@ -44,27 +56,112 @@ class AdminService {
   }
 
   Future<void> approvePayment(String id) async {
-    try {
-      await _client.patch('/payments/$id/approve');
-    } on DioException catch (e) {
-      throw Exception(handleApiError(e));
-    }
+    try { await _client.patch('/payments/$id/approve'); }
+    on DioException catch (e) { throw Exception(handleApiError(e)); }
   }
 
   Future<void> rejectPayment(String id, String reason) async {
+    try { await _client.patch('/payments/$id/reject', data: {'reason': reason}); }
+    on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  // ═══ Faxes ═══
+  Future<List<Map<String, dynamic>>> faxes({String? status}) async {
     try {
-      await _client.patch('/payments/$id/reject', data: {'reason': reason});
+      final res = await _client.get('/faxes/pending');
+      final list = ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+      if (status == null) return list;
+      return list.where((f) => f['status'] == status).toList();
     } on DioException catch (e) {
       throw Exception(handleApiError(e));
     }
   }
 
-  Future<List<Map<String, dynamic>>> allOrders() async {
+  Future<Map<String, dynamic>> operationsCenter() async {
     try {
-      final res = await _client.get('/admin/orders');
-      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+      final res = await _client.get('/faxes/operations-center');
+      return Map<String, dynamic>.from(res.data['data'] as Map);
     } on DioException catch (e) {
       throw Exception(handleApiError(e));
     }
+  }
+
+  Future<void> createFax({
+    required String factoryId,
+    required String driverId,
+    required String vehicleId,
+    required double quantity,
+    String? orderId,
+    String? notes,
+  }) async {
+    try {
+      await _client.post('/faxes/staff/create', data: {
+        'factoryId': factoryId,
+        'driverId': driverId,
+        'vehicleId': vehicleId,
+        'quantity': quantity,
+        if (orderId != null && orderId.isNotEmpty) 'orderId': orderId,
+        if (notes != null && notes.isNotEmpty) 'notes': notes,
+      });
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+
+  Future<void> approveFax(String id) async {
+    try { await _client.patch('/faxes/$id/approve'); }
+    on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  Future<void> issueFax(String id, String faxNumber) async {
+    try { await _client.patch('/faxes/$id/issue', data: {'faxNumber': faxNumber}); }
+    on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  Future<void> issueAndNotify(String id, String faxNumber) async {
+    try { await _client.patch('/faxes/$id/issue-and-notify', data: {'faxNumber': faxNumber}); }
+    on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  Future<void> cancelFax(String id, {String? reason}) async {
+    try { await _client.patch('/faxes/$id/cancel', data: {if (reason != null) 'reason': reason}); }
+    on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  // ═══ Lookups ═══
+  Future<List<Map<String, dynamic>>> sources() async {
+    try {
+      final res = await _client.get('/sources');
+      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  Future<List<Map<String, dynamic>>> drivers() async {
+    try {
+      final res = await _client.get('/drivers');
+      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  Future<List<Map<String, dynamic>>> vehicles() async {
+    try {
+      final res = await _client.get('/vehicles');
+      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  Future<List<Map<String, dynamic>>> customers() async {
+    try {
+      final res = await _client.get('/admin/customers');
+      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+
+  // ═══ Accounting ═══
+  Future<Map<String, dynamic>> integrityCheck() async {
+    try {
+      final res = await _client.get('/accounting/integrity-check');
+      return Map<String, dynamic>.from(res.data['data'] as Map);
+    } on DioException catch (e) { throw Exception(handleApiError(e)); }
   }
 }
