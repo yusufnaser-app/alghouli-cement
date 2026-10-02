@@ -2,11 +2,11 @@ const asyncHandler = require('../../utils/asyncHandler');
 const response = require('../../utils/response');
 const service = require('./ledger.service');
 const { query } = require('../../config/db');
-
+const { requestContext } = require('../audit/audit.service');
 const getMyLedger = asyncHandler(async (req, res) => {
   const c = await query(`SELECT id FROM customers WHERE user_id = $1`, [req.user.id]);
   if (c.rows.length === 0) return response.error(res, 'العميل غير موجود', 404);
-  const ledger = await service.getLedger(c.rows[0].id, req.query);
+  const ledger = await service.getLedger(c.rows[0].id, req.query); // الهوية من التوكن فقط
   return response.success(res, ledger, 'كشف حسابي');
 });
 
@@ -28,14 +28,11 @@ const getCustomerSummary = asyncHandler(async (req, res) => {
 });
 
 const recordPayment = asyncHandler(async (req, res) => {
-  const { amount, method, reference, notes } = req.body;
+  const { amount, currency, method, reference, notes, orderId, idempotencyKey } = req.body;
   const result = await service.recordPayment(req.params.id, {
-    amount: parseFloat(amount),
-    method,
-    reference,
-    notes,
+    amount: String(amount), currency, method, reference, notes, orderId, idempotencyKey,
     createdBy: req.user.id,
-  });
+  }, requestContext(req));
   return response.created(res, result, 'تم تسجيل الدفعة');
 });
 

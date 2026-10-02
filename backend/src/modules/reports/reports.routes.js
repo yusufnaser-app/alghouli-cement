@@ -1,11 +1,11 @@
 const express = require('express');
 const controller = require('./reports.controller');
-const { authenticate, requireRoles } = require('../../middlewares/auth');
+const { authenticate, requireRoles, requirePermission } = require('../../middlewares/auth');
 
 const router = express.Router();
 
 router.use(authenticate);
-router.use(requireRoles('accountant', 'sales'));
+router.use(requirePermission('reports.view'));
 
 router.get('/summary', controller.summary);
 router.get('/by-source', controller.bySource);

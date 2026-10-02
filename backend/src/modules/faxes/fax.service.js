@@ -836,9 +836,9 @@ const driverConfirmLoading = async (faxId, driverUserId, loadedQty, notes) => {
 
     if (Math.abs(diff) > 0.01) {
       await client.query(
-        `INSERT INTO audit_logs (action, entity_type, entity_id, new_values)
-         VALUES ('QUANTITY_DISCREPANCY', 'loading_faxes', $1, $2)`,
-        [faxId, JSON.stringify({ requested, loaded: loadedQty, diff })]
+        `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, new_values)
+         VALUES ($1, 'QUANTITY_DISCREPANCY', 'loading_faxes', $2, $3)`,
+        [driverUserId, faxId, JSON.stringify({ requested, loaded: loadedQty, diff })]
       );
 
       // تنبيه داخلي للمدير ومسؤول النقل (غير حرج: لا يُفشل تسجيل التحميل)
@@ -914,7 +914,8 @@ const setRouteAndTransport = async (faxId, data, userId) => {
        FROM loading_faxes f
        JOIN drivers d ON d.id = f.driver_id
        LEFT JOIN users u ON u.id = d.user_id
-       WHERE f.id = $1`,
+       WHERE f.id = $1
+       FOR UPDATE OF f`,
       [faxId]
     );
 
@@ -943,7 +944,9 @@ const setRouteAndTransport = async (faxId, data, userId) => {
     }
 
     const rate = parseFloat(data.rate);
-    const total = rate * baseQty;
+    // حساب بوحدات صحيحة (لا أخطاء فاصلة عائمة)
+    const { toMinor: _tm, fromMinor: _fm, divRound: _dr } = require('../accounting/accounting.engine');
+    const total = parseFloat(_fm(_dr(BigInt(_tm(rate)) * BigInt(_tm(baseQty)), 100n)));
 
     // تحديد من يتحمل أجور النقل — قبل أي استخدام
     const payerType = data.transportPayer || 'institution';
@@ -988,34 +991,20 @@ const setRouteAndTransport = async (faxId, data, userId) => {
       ]
     );
 
-    // سجل في driver_ledger (فقط إذا المؤسسة تدفع)
-    if (data.transportPayer !== 'trader' && fax.driver_type !== 'trader_driver') {
-      const d = await client.query(
-        `SELECT current_balance FROM drivers WHERE id = $1`,
-        [fax.driver_id]
-      );
-      const newBalance = parseFloat(d.rows[0].current_balance || 0) + total;
-
-      await client.query(
-        `INSERT INTO driver_ledger
-         (driver_id, order_id, transaction_type, description, debit, credit,
-          balance_after, reference_code, created_by)
-         VALUES ($1, $2, 'transport_due', $3, $4, 0, $5, $6, $7)`,
-        [
-          fax.driver_id,
-          fax.order_id,
-          'مستحق نقل — فاكس ' + (fax.fax_number || 'بدون رقم'),
-          total,
-          newBalance,
-          fax.fax_number,
-          userId,
-        ]
-      );
-
-      await client.query(
-        `UPDATE drivers SET current_balance = $1 WHERE id = $2`,
-        [newBalance, fax.driver_id]
-      );
+    // سجل في driver_ledger (فقط إذا المؤسسة تدفع) — عبر نواة الدفتر: قفل + مفتاح عدم تكرار
+    if (data.transportPayer !== 'trader' && fax.driver_type !== 'trader_driver' && total > 0) {
+      await require('../accounting/ledger.core').postDriverEntry(client, {
+        driverId: fax.driver_id, orderId: fax.order_id, currency: 'YER',
+        debit: total, credit: 0, transactionType: 'transport_due',
+        description: 'مستحق نقل — فاكس ' + (fax.fax_number || 'بدون رقم'),
+        referenceCode: fax.fax_number || `FAX-${faxId}`, sourceType: 'fax_route', sourceId: faxId,
+        idempotencyKey: `fax:${faxId}:route-transport`, createdBy: userId,
+      });
+      await require('../audit/audit.service').logAudit(client, {
+        userId, action: 'FAX_TRANSPORT_SET', entityType: 'loading_faxes', entityId: faxId, entityRef: fax.fax_number,
+        oldValues: { transport_rate: fax.transport_rate, transport_total: fax.transport_total },
+        newValues: { transport_rate: rate, transport_total: total, payer: data.transportPayer || 'institution', base_on: data.baseOn || 'loaded_quantity' },
+      });
     }
 
     // إشعار للسائق — يختلف حسب من يتحمل الأجرة

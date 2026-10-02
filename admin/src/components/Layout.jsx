@@ -17,6 +17,7 @@ const menuItems = [
     { path: '/pending-credit', label: 'طلبات بانتظار الموافقة', icon: '⏳', roles: ['admin'], badge: 'pending' },
     { path: '/payments', label: 'المدفوعات', icon: '💰', roles: ['accountant', 'admin'] },
     { path: '/accounting-fulfillment', label: 'ترحيل التحميل والحسابات', icon: '📚', roles: ['accountant', 'admin'] },
+    { path: '/accounting-audit', label: 'كشوف الحسابات والتدقيق', icon: '🧾', roles: ['accountant', 'admin', 'auditor'] },
   ]},
   { section: 'الإدارة', items: [
     { path: '/products', label: 'المنتجات', icon: '📋', roles: ['admin', 'inventory'] },
@@ -46,6 +47,7 @@ const pageTitles = {
   '/awaiting-route': { title: 'بانتظار خط السير', subtitle: 'تحديد الوجهة والأجرة' },
   '/orders': { title: 'الطلبات', subtitle: 'إدارة الطلبات' },
   '/deliveries': { title: 'تعيين التوصيل', subtitle: 'تعيين سائق وقاطرة لطلبات المؤسسة' },
+  '/accounting-audit': { title: 'كشوف الحسابات والتدقيق', subtitle: 'كشف لكل عملة، فحص السلامة، سجل التدقيق' },
   '/accounting-fulfillment': { title: 'ترحيل التحميل والحسابات', subtitle: 'تثبيت الكمية الفعلية وربط كشوف الحساب' },
   '/pending-credit': { title: 'طلبات بانتظار الموافقة', subtitle: 'الموافقة على الطلبات الآجلة' },
   '/payments': { title: 'المدفوعات', subtitle: 'مراجعة الدفعات' },

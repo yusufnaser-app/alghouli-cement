@@ -1,6 +1,6 @@
 const express = require('express');
 const controller = require('./transport.controller');
-const { authenticate, requireRoles } = require('../../middlewares/auth');
+const { authenticate, requireRoles, requirePermission } = require('../../middlewares/auth');
 
 const router = express.Router();
 
@@ -8,9 +8,9 @@ const router = express.Router();
 router.get('/calculate', controller.calculate);
 
 router.use(authenticate);
-router.get('/rates', requireRoles('admin', 'sales'), controller.listRates);
-router.post('/rates', requireRoles('admin'), controller.createRate);
-router.put('/rates/:id', requireRoles('admin'), controller.updateRate);
-router.delete('/rates/:id', requireRoles('admin'), controller.removeRate);
+router.get('/rates', requirePermission('pricing.view'), controller.listRates);
+router.post('/rates', requirePermission('pricing.update'), controller.createRate);
+router.put('/rates/:id', requirePermission('pricing.update'), controller.updateRate);
+router.delete('/rates/:id', requirePermission('pricing.update'), controller.removeRate);
 
 module.exports = router;

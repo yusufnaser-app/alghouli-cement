@@ -33,6 +33,9 @@ const pricingSchema = z.object({
   })).min(1),
   transportAmount: z.number().min(0).optional(),
   transportBeneficiary: z.enum(['driver', 'trader']).optional(),
+  currency: z.enum(['YER', 'USD', 'SAR']).optional(),
+  transportMode: z.enum(['none', 'separate', 'included']).optional(),
+  reason: z.string().max(300).optional(),
 });
 
 const groupOrderSchema = z.object({

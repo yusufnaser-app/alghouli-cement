@@ -1,168 +1,198 @@
+'use strict';
 const { pool, query } = require('../../config/db');
+const core = require('../accounting/ledger.core');
+const engine = require('../accounting/accounting.engine');
+const { logAudit } = require('../audit/audit.service');
 
-/**
- * تسجيل معاملة في كشف الحساب
- */
-const addTransaction = async (client, {
-  customerId,
-  orderId,
-  transactionType,
-  debit = 0,
-  credit = 0,
-  description,
-  paymentMethod,
-  referenceCode,
-  createdBy,
-}) => {
-  const balRes = await client.query(
-    `SELECT current_balance FROM customers WHERE id = $1 FOR UPDATE`,
-    [customerId]
-  );
-  if (balRes.rows.length === 0) {
-    const err = new Error('العميل غير موجود');
-    err.status = 404;
-    throw err;
-  }
-  const currentBalance = parseFloat(balRes.rows[0].current_balance || 0);
-  const newBalance = currentBalance + debit - credit;
-
-  await client.query(
-    `INSERT INTO customer_ledger
-     (customer_id, order_id, transaction_type, debit, credit, balance_after,
-      description, payment_method, reference_code, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-    [
-      customerId, orderId || null, transactionType,
-      debit, credit, newBalance,
-      description || null, paymentMethod || null, referenceCode || null,
-      createdBy || null,
-    ]
-  );
-
-  await client.query(
-    `UPDATE customers SET current_balance = $1 WHERE id = $2`,
-    [newBalance, customerId]
-  );
-
-  return newBalance;
+const wrap = (e) => {
+  if (!(e instanceof engine.AccountingError)) return e;
+  const x = new Error(e.message); x.status = e.status || 400; x.code = e.code; return x;
 };
 
 /**
- * جلب كشف الحساب
+ * توافق مع الاستدعاءات القديمة: أي قيد يمر الآن من ledger.core
+ * (عملة إلزامية، مرجع إلزامي، قفل، عدم تكرار). لا كتابة مباشرة على الرصيد.
  */
-const getLedger = async (customerId, { from, to, limit = 100 } = {}) => {
-  let sql = `
-    SELECT cl.*, o.order_number
-    FROM customer_ledger cl
-    LEFT JOIN orders o ON o.id = cl.order_id
-    WHERE cl.customer_id = $1
-  `;
-  const params = [customerId];
-
-  if (from) {
-    params.push(from);
-    sql += ` AND cl.created_at >= $${params.length}`;
-  }
-  if (to) {
-    params.push(to);
-    sql += ` AND cl.created_at <= $${params.length}`;
-  }
-
-  params.push(limit);
-  sql += ` ORDER BY cl.created_at DESC LIMIT $${params.length}`;
-
-  const r = await query(sql, params);
-  return r.rows;
+const addTransaction = async (client, p) => {
+  try {
+    const r = await core.postCustomerEntry(client, {
+      customerId: p.customerId, orderId: p.orderId, currency: p.currency || 'YER',
+      debit: p.debit || 0, credit: p.credit || 0, transactionType: p.transactionType,
+      description: p.description, paymentMethod: p.paymentMethod,
+      referenceCode: p.referenceCode || `${String(p.transactionType).toUpperCase()}-${Date.now()}`,
+      createdBy: p.createdBy, idempotencyKey: p.idempotencyKey, reason: p.reason,
+      sourceType: p.sourceType, sourceId: p.sourceId,
+    });
+    return r.balance;
+  } catch (e) { throw wrap(e); }
 };
 
-/**
- * ملخص الحساب
- */
+/** الأرصدة لكل عملة (من customer_balances = مجموع الدفتر). */
+const getBalances = async (customerId) => core.getBalances({ query }, customerId);
+
+/** ملخص الحساب لكل عملة على حدة — بلا جمع عملات. */
 const getSummary = async (customerId) => {
   const r = await query(
-    `SELECT
-       c.current_balance,
-       c.credit_limit,
-       COALESCE(SUM(cl.debit), 0) AS total_purchases,
-       COALESCE(SUM(cl.credit), 0) AS total_payments,
-       COUNT(DISTINCT cl.order_id) AS total_orders
-     FROM customers c
-     LEFT JOIN customer_ledger cl ON cl.customer_id = c.id
-     WHERE c.id = $1
-     GROUP BY c.id, c.current_balance, c.credit_limit`,
-    [customerId]
-  );
-  return r.rows[0] || {
-    current_balance: 0,
-    credit_limit: 0,
-    total_purchases: 0,
-    total_payments: 0,
-    total_orders: 0,
-  };
+    `SELECT cl.currency,
+            COALESCE(SUM(cl.debit),0) AS total_debit,
+            COALESCE(SUM(cl.credit),0) AS total_credit,
+            COUNT(DISTINCT cl.order_id) AS total_orders
+     FROM customer_ledger cl WHERE cl.customer_id = $1 GROUP BY cl.currency`, [customerId]);
+  const c = await query(`SELECT credit_limit FROM customers WHERE id = $1`, [customerId]);
+  const balances = await getBalances(customerId);
+  const byCurrency = {};
+  for (const cur of engine.CURRENCIES) {
+    const row = r.rows.find((x) => x.currency === cur);
+    if (!row && balances[cur] === undefined) continue;
+    byCurrency[cur] = {
+      balance: balances[cur] || '0.00',
+      side: engine.balanceSide(engine.toMinor(balances[cur] || 0)),
+      total_debit: row ? engine.fromMinor(engine.toMinor(row.total_debit)) : '0.00',
+      total_credit: row ? engine.fromMinor(engine.toMinor(row.total_credit)) : '0.00',
+    };
+  }
+  return { credit_limit: c.rows[0] ? c.rows[0].credit_limit : 0, balances: byCurrency };
+};
+
+/** قائمة الحركات الخام (للتوافق). المصدر الرسمي للكشف: accounting-statements.service. */
+const getLedger = async (customerId, { from, to, currency, limit = 100 } = {}) => {
+  const params = [customerId];
+  let sql = `SELECT cl.*, o.order_number FROM customer_ledger cl
+             LEFT JOIN orders o ON o.id = cl.order_id WHERE cl.customer_id = $1`;
+  if (currency) { params.push(engine.assertCurrency(currency)); sql += ` AND cl.currency = $${params.length}`; }
+  if (from) { params.push(engine.periodStart(from)); sql += ` AND cl.entry_date >= $${params.length}`; }
+  if (to) { params.push(engine.periodEnd(to)); sql += ` AND cl.entry_date <= $${params.length}`; }
+  params.push(Math.min(Number(limit) || 100, 500));
+  sql += ` ORDER BY cl.entry_date DESC, cl.seq DESC LIMIT $${params.length}`;
+  return (await query(sql, params)).rows;
 };
 
 /**
- * تسجيل دفعة
+ * دفعة يدوية يسجلها المحاسب مباشرة على الحساب (دفعة على الحساب، غير مرتبطة بطلب).
+ * لا نفترض أنها تخص آخر طلب. idempotencyKey من العميل (الواجهة) يمنع التكرار عند الضغط المزدوج.
  */
-const recordPayment = async (customerId, { amount, method, reference, notes, createdBy }) => {
+const recordPayment = async (customerId, { amount, currency, method, reference, notes, createdBy, orderId, idempotencyKey }, ctx = {}) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-
-    const newBalance = await addTransaction(client, {
-      customerId,
-      transactionType: 'payment',
-      credit: amount,
-      description: notes || `دفعة - ${method || 'نقدي'}`,
-      paymentMethod: method,
-      referenceCode: reference,
+    const cur = engine.assertCurrency(currency);
+    if (engine.toMinor(amount) <= 0) throw new engine.AccountingError('مبلغ الدفعة يجب أن يكون أكبر من صفر', 'INVALID_AMOUNT');
+    if (!reference || !String(reference).trim()) throw new engine.AccountingError('مرجع الدفعة مطلوب', 'REFERENCE_REQUIRED');
+    if (orderId) {
+      const o = await client.query(`SELECT id FROM orders WHERE id = $1 AND customer_id = $2`, [orderId, customerId]);
+      if (!o.rows.length) throw new engine.AccountingError('الطلب لا يخص هذا العميل', 'ORDER_MISMATCH', 400);
+    }
+    const r = await core.postCustomerEntry(client, {
+      customerId, orderId: orderId || null, currency: cur, debit: 0, credit: amount,
+      transactionType: 'manual_payment', description: notes || `دفعة على الحساب - ${method || 'نقدي'}`,
+      paymentMethod: method, referenceCode: String(reference).trim(), sourceType: 'manual_payment',
+      idempotencyKey: idempotencyKey ? `manual-payment:${customerId}:${idempotencyKey}` : undefined,
       createdBy,
     });
-
+    if (!r.duplicate) {
+      await logAudit(client, {
+        userId: createdBy, action: 'LEDGER_MANUAL_PAYMENT', entityType: 'customer_ledger', entityId: r.entry.id,
+        newValues: { customer_id: customerId, amount: String(amount), currency: cur, order_id: orderId || null, reference },
+        reason: notes || null, ip: ctx.ip, userAgent: ctx.userAgent,
+      });
+    }
     await client.query('COMMIT');
-    return { new_balance: newBalance };
+    return { entry_id: r.entry.id, currency: cur, new_balance: r.balance, duplicate: r.duplicate };
   } catch (err) {
     await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+    throw wrap(err);
+  } finally { client.release(); }
 };
 
-/**
- * قائمة العملاء مع أرصدتهم
- */
+/** رصيد افتتاحي: واحد لكل (عميل، عملة). المدين = عليه، الدائن = له. */
+const setOpeningBalance = async (customerId, { amount, side, currency, asOf, notes }, userId, ctx = {}) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const cur = engine.assertCurrency(currency);
+    if (!['debit', 'credit'].includes(side)) throw new engine.AccountingError('الجانب يجب أن يكون debit أو credit', 'INVALID_SIDE');
+    if (engine.toMinor(amount) <= 0) throw new engine.AccountingError('مبلغ غير صالح', 'INVALID_AMOUNT');
+    const r = await core.postCustomerEntry(client, {
+      customerId, currency: cur, debit: side === 'debit' ? amount : 0, credit: side === 'credit' ? amount : 0,
+      transactionType: 'opening_balance', description: notes || 'رصيد افتتاحي',
+      referenceCode: `OPEN-${cur}`, sourceType: 'opening_balance', idempotencyKey: `opening:${customerId}:${cur}`,
+      entryDate: asOf || null, createdBy: userId,
+    });
+    if (r.duplicate) throw new engine.AccountingError(`يوجد رصيد افتتاحي ${cur} لهذا العميل؛ صحّحه بتسوية أو عكس`, 'OPENING_EXISTS', 409);
+    await logAudit(client, {
+      userId, action: 'OPENING_BALANCE_SET', entityType: 'customer_ledger', entityId: r.entry.id,
+      newValues: { customer_id: customerId, amount: String(amount), side, currency: cur, as_of: asOf || null },
+      reason: notes || null, ip: ctx.ip, userAgent: ctx.userAgent,
+    });
+    await client.query('COMMIT');
+    return { entry_id: r.entry.id, currency: cur, balance: r.balance };
+  } catch (err) { await client.query('ROLLBACK'); throw wrap(err); } finally { client.release(); }
+};
+
+/** تسوية يدوية (قيد معلَّل). تتطلب سببًا، وتُسجَّل في التدقيق. */
+const manualAdjustment = async (customerId, { amount, side, currency, reason, reference, orderId }, userId, ctx = {}) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    if (!reason || String(reason).trim().length < 3) throw new engine.AccountingError('سبب التسوية مطلوب', 'REASON_REQUIRED');
+    if (!['debit', 'credit'].includes(side)) throw new engine.AccountingError('الجانب غير صالح', 'INVALID_SIDE');
+    const cur = engine.assertCurrency(currency);
+    const ref = reference || `ADJ-${Date.now()}`;
+    const r = await core.postCustomerEntry(client, {
+      customerId, orderId: orderId || null, currency: cur,
+      debit: side === 'debit' ? amount : 0, credit: side === 'credit' ? amount : 0,
+      transactionType: 'adjustment', description: `تسوية: ${reason}`, referenceCode: ref,
+      sourceType: 'manual_adjustment', reason, createdBy: userId,
+    });
+    await logAudit(client, {
+      userId, action: 'LEDGER_ADJUSTMENT', entityType: 'customer_ledger', entityId: r.entry.id, entityRef: ref,
+      newValues: { customer_id: customerId, amount: String(amount), side, currency: cur },
+      reason, ip: ctx.ip, userAgent: ctx.userAgent,
+    });
+    await client.query('COMMIT');
+    return { entry_id: r.entry.id, currency: cur, balance: r.balance };
+  } catch (err) { await client.query('ROLLBACK'); throw wrap(err); } finally { client.release(); }
+};
+
+const reverseEntry = async (entryId, { reason }, userId, ctx = {}) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const r = await core.reverseCustomerEntry(client, entryId, { reason, userId });
+    if (!r.duplicate) {
+      await logAudit(client, {
+        userId, action: 'LEDGER_ENTRY_REVERSED', entityType: 'customer_ledger', entityId: entryId,
+        oldValues: { debit: r.original.debit, credit: r.original.credit, currency: r.original.currency, reference: r.original.reference_code },
+        newValues: { reversal_entry_id: r.entry.id }, reason, ip: ctx.ip, userAgent: ctx.userAgent,
+      });
+    }
+    await client.query('COMMIT');
+    return { reversal_entry_id: r.entry.id, already_reversed: r.duplicate, currency: r.entry.currency, balance: r.balance };
+  } catch (err) { await client.query('ROLLBACK'); throw wrap(err); } finally { client.release(); }
+};
+
+/** قائمة العملاء مع أرصدتهم لكل عملة (دون جمعها). */
 const listCustomersWithBalance = async (filters = {}) => {
+  const params = [];
   let sql = `
-    SELECT
-      c.id, c.customer_type, c.governorate, c.area,
-      c.credit_limit, c.current_balance,
-      u.full_name, u.phone, u.status,
-      (SELECT COUNT(*) FROM orders WHERE customer_id = c.id) AS orders_count,
-      (SELECT COALESCE(SUM(total_amount),0) FROM orders WHERE customer_id = c.id) AS total_spent
+    SELECT c.id, c.customer_type, c.governorate, c.area, c.credit_limit,
+           u.full_name, u.phone, u.status,
+           COALESCE(json_object_agg(b.currency, b.balance) FILTER (WHERE b.currency IS NOT NULL), '{}') AS balances,
+           (SELECT COUNT(*) FROM orders WHERE customer_id = c.id) AS orders_count
     FROM customers c
     JOIN users u ON u.id = c.user_id
-    WHERE 1=1
-  `;
-  const params = [];
-
-  if (filters.customerType) {
-    params.push(filters.customerType);
-    sql += ` AND c.customer_type = $${params.length}`;
-  }
+    LEFT JOIN customer_balances b ON b.customer_id = c.id
+    WHERE 1=1`;
+  if (filters.customerType) { params.push(filters.customerType); sql += ` AND c.customer_type = $${params.length}`; }
+  sql += ` GROUP BY c.id, u.full_name, u.phone, u.status ORDER BY u.full_name ASC`;
+  let rows = (await query(sql, params)).rows;
   if (filters.hasBalance === 'true') {
-    sql += ` AND c.current_balance > 0`;
+    rows = rows.filter((r) => Object.values(r.balances || {}).some((v) => engine.toMinor(v) > 0));
   }
-
-  sql += ` ORDER BY c.current_balance DESC, u.full_name ASC`;
-  const r = await query(sql, params);
-  return r.rows;
+  return rows;
 };
 
 module.exports = {
-  addTransaction,
-  getLedger,
-  getSummary,
-  recordPayment,
-  listCustomersWithBalance,
+  addTransaction, getBalances, getLedger, getSummary, recordPayment,
+  setOpeningBalance, manualAdjustment, reverseEntry, listCustomersWithBalance,
 };

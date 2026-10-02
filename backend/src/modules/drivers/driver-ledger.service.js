@@ -53,156 +53,43 @@ const getSummary = async (driverId) => {
 };
 
 /**
- * تسجيل دفعة للسائق
+ * حركات السائق المالية الثلاث (دفعة / سلفة / خصم) — كلها دائن (تُنقص ما تدين به المؤسسة للسائق).
+ * كانت السلفة والخصم تُسجَّلان كمدين بينما الرصيد ينقص (إشارة خاطئة): صُحّح الآن.
+ * تمر عبر نواة الدفتر: قفل + مفتاح عدم تكرار اختياري + تدقيق داخل نفس المعاملة.
  */
-const recordPayment = async (driverId, data, userId) => {
+const recordDriverMovement = async (driverId, data, userId, type, defaultDesc, ctx = {}) => {
+  const core = require('../accounting/ledger.core');
+  const { logAudit } = require('../audit/audit.service');
+  const { AccountingError } = require('../accounting/accounting.engine');
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-
-    const d = await client.query(
-      `SELECT id, current_balance FROM drivers WHERE id = $1 FOR UPDATE`,
-      [driverId]
-    );
-    if (d.rows.length === 0) {
-      const err = new Error('السائق غير موجود');
-      err.status = 404;
-      throw err;
+    const r = await core.postDriverEntry(client, {
+      driverId, currency: 'YER', debit: 0, credit: String(data.amount), transactionType: type,
+      description: data.description || defaultDesc, referenceCode: data.reference || `${type.toUpperCase()}-${Date.now()}`,
+      sourceType: `driver_${type}`, idempotencyKey: data.idempotencyKey ? `driver-${type}:${driverId}:${data.idempotencyKey}` : undefined,
+      createdBy: userId,
+    });
+    if (!r.duplicate) {
+      await logAudit(client, {
+        userId, action: `DRIVER_${type.toUpperCase()}`, entityType: 'driver_ledger', entityId: r.entry.id,
+        newValues: { driver_id: driverId, amount: String(data.amount), reference: data.reference || null },
+        reason: data.description || null, ip: ctx.ip, userAgent: ctx.userAgent,
+      });
     }
-    const balance = parseFloat(d.rows[0].current_balance || 0);
-    const newBalance = balance - data.amount;
-
-    await client.query(
-      `INSERT INTO driver_ledger
-       (driver_id, transaction_type, description, debit, credit, balance_after,
-        reference_code, created_by)
-       VALUES ($1, 'payment', $2, 0, $3, $4, $5, $6)`,
-      [
-        driverId,
-        data.description || `دفعة - ${data.method || 'نقدي'}`,
-        data.amount,
-        newBalance,
-        data.reference || null,
-        userId,
-      ]
-    );
-
-    await client.query(
-      `UPDATE drivers SET current_balance = $1 WHERE id = $2`,
-      [newBalance, driverId]
-    );
-
     await client.query('COMMIT');
-    return { new_balance: newBalance };
+    return { new_balance: parseFloat(r.balance), duplicate: r.duplicate };
   } catch (err) {
     await client.query('ROLLBACK');
+    if (err instanceof AccountingError) { const e = new Error(err.message); e.status = err.status; throw e; }
     throw err;
   } finally {
     client.release();
   }
 };
-
-/**
- * تسجيل سلفة للسائق
- */
-const recordAdvance = async (driverId, data, userId) => {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    const d = await client.query(
-      `SELECT id, current_balance FROM drivers WHERE id = $1 FOR UPDATE`,
-      [driverId]
-    );
-    if (d.rows.length === 0) {
-      const err = new Error('السائق غير موجود');
-      err.status = 404;
-      throw err;
-    }
-    const balance = parseFloat(d.rows[0].current_balance || 0);
-    // الرصيد = ما تدين به المؤسسة للسائق؛ السلفة والخصم يُنقصانه
-    const newBalance = balance - data.amount;
-
-    await client.query(
-      `INSERT INTO driver_ledger
-       (driver_id, transaction_type, description, debit, credit, balance_after,
-        reference_code, created_by)
-       VALUES ($1, 'advance', $2, $3, 0, $4, $5, $6)`,
-      [
-        driverId,
-        data.description || 'سلفة',
-        data.amount,
-        newBalance,
-        data.reference || null,
-        userId,
-      ]
-    );
-
-    await client.query(
-      `UPDATE drivers SET current_balance = $1 WHERE id = $2`,
-      [newBalance, driverId]
-    );
-
-    await client.query('COMMIT');
-    return { new_balance: newBalance };
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
-};
-
-/**
- * خصم من السائق
- */
-const recordDeduction = async (driverId, data, userId) => {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    const d = await client.query(
-      `SELECT id, current_balance FROM drivers WHERE id = $1 FOR UPDATE`,
-      [driverId]
-    );
-    if (d.rows.length === 0) {
-      const err = new Error('السائق غير موجود');
-      err.status = 404;
-      throw err;
-    }
-    const balance = parseFloat(d.rows[0].current_balance || 0);
-    // الرصيد = ما تدين به المؤسسة للسائق؛ السلفة والخصم يُنقصانه
-    const newBalance = balance - data.amount;
-
-    await client.query(
-      `INSERT INTO driver_ledger
-       (driver_id, transaction_type, description, debit, credit, balance_after,
-        reference_code, created_by)
-       VALUES ($1, 'deduction', $2, $3, 0, $4, $5, $6)`,
-      [
-        driverId,
-        data.description || 'خصم',
-        data.amount,
-        newBalance,
-        data.reference || null,
-        userId,
-      ]
-    );
-
-    await client.query(
-      `UPDATE drivers SET current_balance = $1 WHERE id = $2`,
-      [newBalance, driverId]
-    );
-
-    await client.query('COMMIT');
-    return { new_balance: newBalance };
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
-};
+const recordPayment = (driverId, data, userId, ctx) => recordDriverMovement(driverId, data, userId, 'payment', `دفعة - ${data.method || 'نقدي'}`, ctx);
+const recordAdvance = (driverId, data, userId, ctx) => recordDriverMovement(driverId, data, userId, 'advance', 'سلفة', ctx);
+const recordDeduction = (driverId, data, userId, ctx) => recordDriverMovement(driverId, data, userId, 'deduction', 'خصم', ctx);
 
 /**
  * قائمة السائقين مع أرصدتهم

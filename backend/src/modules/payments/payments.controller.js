@@ -2,6 +2,8 @@ const { z } = require('zod');
 const asyncHandler = require('../../utils/asyncHandler');
 const response = require('../../utils/response');
 const service = require('./payments.service');
+const { requestContext } = require('../audit/audit.service');
+const { loadPermissions } = require('../../middlewares/auth');
 
 const submitSchema = z.object({
   orderId: z.string().uuid(),
@@ -33,7 +35,9 @@ const myPayments = asyncHandler(async (req, res) => {
 });
 
 const getById = asyncHandler(async (req, res) => {
-  const isAdmin = req.roles.includes('admin') || req.roles.includes('accountant');
+  // الموظف المصرّح (payments.view) يرى أي دفعة؛ غيره يرى دفعاته فقط (منع IDOR)
+  const perms = await loadPermissions(req);
+  const isAdmin = perms.has('*') || perms.has('payments.view');
   const payment = await service.getPaymentById(req.params.id, req.user.id, isAdmin);
   if (!payment) return response.error(res, 'الدفعة غير موجودة', 404, 'NOT_FOUND');
   return response.success(res, payment);
@@ -45,14 +49,20 @@ const pending = asyncHandler(async (req, res) => {
 });
 
 const approve = asyncHandler(async (req, res) => {
-  const result = await service.approvePayment(req.params.id, req.user.id);
+  const result = await service.approvePayment(req.params.id, req.user.id, { roles: req.roles, ...requestContext(req) });
   return response.success(res, result, 'تم اعتماد الدفع');
 });
 
 const reject = asyncHandler(async (req, res) => {
   const { reason } = rejectSchema.parse(req.body);
-  const result = await service.rejectPayment(req.params.id, req.user.id, reason);
+  const result = await service.rejectPayment(req.params.id, req.user.id, reason, requestContext(req));
   return response.success(res, result, 'تم رفض الدفع');
 });
 
-module.exports = { listMethods, submit, myPayments, getById, pending, approve, reject };
+const reverse = asyncHandler(async (req, res) => {
+  const { reason } = rejectSchema.parse(req.body);
+  const result = await service.reversePayment(req.params.id, req.user.id, reason, requestContext(req));
+  return response.success(res, result, 'تم عكس الدفعة');
+});
+
+module.exports = { listMethods, submit, myPayments, getById, pending, approve, reject, reverse };

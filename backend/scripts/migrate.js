@@ -263,11 +263,17 @@ const createTables = async () => {
       );
     `);
 
-    // ترقية جدول ترحيل حسابات الطلبات للبيانات القديمة
-    // إضافة العمود فقط إذا كان غير موجود، بدون إنشاء جدول جديد.
+    // ترقية جدول ترحيل حسابات الطلبات — يُنشأ في m27.js
+    // هذا التعديل يعمل فقط إذا كان الجدول موجودًا مسبقًا
     await client.query(`
-      ALTER TABLE order_accounting_postings
-      ADD COLUMN IF NOT EXISTS trader_transport_amount DECIMAL(14,2) NOT NULL DEFAULT 0
+      DO $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.tables
+                   WHERE table_name = 'order_accounting_postings') THEN
+          ALTER TABLE order_accounting_postings
+          ADD COLUMN IF NOT EXISTS trader_transport_amount DECIMAL(14,2) NOT NULL DEFAULT 0;
+        END IF;
+      END $$;
     `);
 
     // ترقية جدول payments لدعم العملة (multi-currency)

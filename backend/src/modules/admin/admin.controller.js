@@ -16,7 +16,7 @@ const listCustomers = asyncHandler(async (req, res) => {
 
 const updateOrderStatus = asyncHandler(async (req, res) => {
   const { status, reason } = req.body;
-  const result = await service.updateOrderStatus(req.params.id, status, req.user.id, reason);
+  const result = await service.updateOrderStatus(req.params.id, status, req.user.id, reason, require('../audit/audit.service').requestContext(req));
   if (!result) return response.error(res, 'الطلب غير موجود', 404);
   return response.success(res, result, 'تم التحديث');
 });

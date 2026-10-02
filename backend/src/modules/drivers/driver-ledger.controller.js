@@ -8,6 +8,7 @@ const paymentSchema = z.object({
   method: z.string().optional(),
   reference: z.string().optional(),
   description: z.string().optional(),
+  idempotencyKey: z.string().max(80).optional(),
 });
 
 // ============ السائق ============
@@ -55,19 +56,19 @@ const getSummary = asyncHandler(async (req, res) => {
 
 const recordPayment = asyncHandler(async (req, res) => {
   const data = paymentSchema.parse(req.body);
-  const r = await service.recordPayment(req.params.driverId, data, req.user.id);
+  const r = await service.recordPayment(req.params.driverId, data, req.user.id, require('../audit/audit.service').requestContext(req));
   return response.created(res, r, 'تم تسجيل الدفعة');
 });
 
 const recordAdvance = asyncHandler(async (req, res) => {
   const data = paymentSchema.parse(req.body);
-  const r = await service.recordAdvance(req.params.driverId, data, req.user.id);
+  const r = await service.recordAdvance(req.params.driverId, data, req.user.id, require('../audit/audit.service').requestContext(req));
   return response.created(res, r, 'تم تسجيل السلفة');
 });
 
 const recordDeduction = asyncHandler(async (req, res) => {
   const data = paymentSchema.parse(req.body);
-  const r = await service.recordDeduction(req.params.driverId, data, req.user.id);
+  const r = await service.recordDeduction(req.params.driverId, data, req.user.id, require('../audit/audit.service').requestContext(req));
   return response.created(res, r, 'تم تسجيل الخصم');
 });
 

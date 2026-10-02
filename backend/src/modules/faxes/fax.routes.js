@@ -1,6 +1,6 @@
 const express = require('express');
 const controller = require('./fax.controller');
-const { authenticate, requireRoles } = require('../../middlewares/auth');
+const { authenticate, requireRoles, requirePermission } = require('../../middlewares/auth');
 
 const router = express.Router();
 router.use(authenticate);
@@ -16,18 +16,18 @@ router.patch('/:id/confirm-loading', requireRoles('driver'), controller.confirmL
 router.post('/request-for-driver', requireRoles('customer'), controller.request);
 
 // الموظف
-router.post('/staff/create', requireRoles('transport', 'admin', 'sales'), controller.staffRequest);
-router.get('/pending', requireRoles('transport', 'admin'), controller.pending);
-router.get('/admin/awaiting-route', requireRoles('admin', 'transport'), controller.awaitingRoute);
-router.patch('/:id/route-transport', requireRoles('admin', 'transport'), controller.setRouteTransport);
-router.get('/pending-route-price', requireRoles('transport', 'admin'), controller.pendingRoutePrice);
-router.get('/export', requireRoles('transport', 'admin'), controller.exportCsv);
-router.get('/operations-center', requireRoles('transport', 'admin'), controller.operationsCenter);
-router.patch('/:id/approve', requireRoles('transport', 'admin'), controller.approve);
-router.patch('/:id/issue', requireRoles('transport', 'admin'), controller.issue);
-router.patch('/:id/issue-and-notify', requireRoles('transport', 'admin'), controller.issueAndNotify);
-router.patch('/:id/loading', requireRoles('transport', 'admin'), controller.recordLoading);
-router.patch('/:id/cancel', requireRoles('transport', 'admin'), controller.cancel);
+router.post('/staff/create', requirePermission('loading.create', 'transport.assign'), controller.staffRequest);
+router.get('/pending', requirePermission('loading.view', 'transport.view'), controller.pending);
+router.get('/admin/awaiting-route', requirePermission('transport.view'), controller.awaitingRoute);
+router.patch('/:id/route-transport', requirePermission('transport.update', 'pricing.update'), controller.setRouteTransport);
+router.get('/pending-route-price', requirePermission('transport.view'), controller.pendingRoutePrice);
+router.get('/export', requirePermission('reports.export', 'loading.view'), controller.exportCsv);
+router.get('/operations-center', requirePermission('loading.view', 'transport.view'), controller.operationsCenter);
+router.patch('/:id/approve', requirePermission('loading.create'), controller.approve);
+router.patch('/:id/issue', requirePermission('loading.create'), controller.issue);
+router.patch('/:id/issue-and-notify', requirePermission('loading.create'), controller.issueAndNotify);
+router.patch('/:id/loading', requirePermission('loading.confirm'), controller.recordLoading);
+router.patch('/:id/cancel', requirePermission('loading.update'), controller.cancel);
 
 // عام
 router.get('/:id', controller.getById);
