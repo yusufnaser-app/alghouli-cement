@@ -74,66 +74,9 @@ class ApiClient {
       rethrow;
     }
   }
-}
 
-class ApiException implements Exception {
-  final String message;
-  final int? statusCode;
-  final String? code;
-
-  ApiException(this.message, {this.statusCode, this.code});
-
-  @override
-  String toString() => message;
-}
-
-String handleApiError(dynamic error) {
-  if (error is DioException) {
-    if (error.response?.data is Map) {
-      final data = error.response!.data as Map;
-      
-      // عرض رسالة الخطأ الأساسية
-      final mainMsg = data['message']?.toString();
-      
-      // إضافة تفاصيل حقول التحقق (Zod)
-      if (data['errors'] is List && (data['errors'] as List).isNotEmpty) {
-        final details = (data['errors'] as List)
-            .map((e) {
-              if (e is Map) {
-                final field = e['field'] ?? e['path'] ?? '';
-                final msg = e['message'] ?? '';
-                return '$field: $msg';
-              }
-              return e.toString();
-            })
-            .join('\n');
-        return '$mainMsg\n$details';
-      }
-      
-      if (mainMsg != null) return mainMsg;
-    }
-    
-    final type = error.type;
-    if (type == DioExceptionType.connectionTimeout ||
-        type == DioExceptionType.receiveTimeout ||
-        type == DioExceptionType.sendTimeout) {
-      return 'الخادم بطيء، جاري إعادة المحاولة...';
-    }
-    if (type == DioExceptionType.connectionError) {
-      return 'تحقق من الاتصال بالإنترنت ثم أعد المحاولة';
-    }
-    if (type == DioExceptionType.badCertificate) {
-      return 'خطأ في شهادة الأمان';
-    }
-    if (type == DioExceptionType.cancel) {
-      return 'تم إلغاء الطلب';
-    }
-    if (type == DioExceptionType.badResponse) {
-      return 'خطأ في الخادم: ${error.response?.statusCode}';
-    }
-    return 'خطأ في الاتصال بالخادم';
-  
   /// يتحقق أن التوكن الحالي صالح. إذا منتهي، يجدد بـ refreshToken.
+  /// يعيد true إذا الجلسة سارية، false إذا يجب تسجيل الدخول.
   Future<bool> validateSession() async {
     try {
       await dio.get('/auth/me');
@@ -162,6 +105,61 @@ String handleApiError(dynamic error) {
       return true;
     }
   }
-
 }
+
+class ApiException implements Exception {
+  final String message;
+  final int? statusCode;
+  final String? code;
+
+  ApiException(this.message, {this.statusCode, this.code});
+
+  @override
+  String toString() => message;
+}
+
+String handleApiError(dynamic error) {
+  if (error is DioException) {
+    if (error.response?.data is Map) {
+      final data = error.response!.data as Map;
+      final mainMsg = data['message']?.toString();
+
+      if (data['errors'] is List && (data['errors'] as List).isNotEmpty) {
+        final details = (data['errors'] as List)
+            .map((e) {
+              if (e is Map) {
+                final field = e['field'] ?? e['path'] ?? '';
+                final msg = e['message'] ?? '';
+                return '$field: $msg';
+              }
+              return e.toString();
+            })
+            .join('\n');
+        return '$mainMsg\n$details';
+      }
+
+      if (mainMsg != null) return mainMsg;
+    }
+
+    final type = error.type;
+    if (type == DioExceptionType.connectionTimeout ||
+        type == DioExceptionType.receiveTimeout ||
+        type == DioExceptionType.sendTimeout) {
+      return 'الخادم بطيء، جاري إعادة المحاولة...';
+    }
+    if (type == DioExceptionType.connectionError) {
+      return 'تحقق من الاتصال بالإنترنت ثم أعد المحاولة';
+    }
+    if (type == DioExceptionType.badCertificate) {
+      return 'خطأ في شهادة الأمان';
+    }
+    if (type == DioExceptionType.cancel) {
+      return 'تم إلغاء الطلب';
+    }
+    if (type == DioExceptionType.badResponse) {
+      return 'خطأ في الخادم: ${error.response?.statusCode}';
+    }
+    return 'خطأ في الاتصال بالخادم';
+  }
   return 'حدث خطأ غير متوقع';
+}
