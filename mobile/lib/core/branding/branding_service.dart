@@ -20,7 +20,7 @@ class BrandingService {
     'home_banner_url': '',
     'company_name': 'مؤسسة الغولي',
     'company_full_name': 'مؤسسة الغولي للتجارة وتسويق الأسمنت',
-    'company_subtitle': 'للتجارة وتسويق الأسمنت',
+    'company_subtitle': 'المصداقية أساس تميزنا',
   };
 
   static Future<Map<String, dynamic>> loadCached() async {
@@ -67,7 +67,7 @@ class BrandingService {
 
   /// الاسم الفرعي
   static String get companySubtitle =>
-      (_current['company_subtitle'] ?? 'للتجارة وتسويق الأسمنت').toString();
+      (_current['company_subtitle'] ?? 'المصداقية أساس تميزنا').toString();
 
   static String get logoUrl => (_current['logo_url'] ?? '').toString();
   static String get faviconUrl => (_current['favicon_url'] ?? '').toString();

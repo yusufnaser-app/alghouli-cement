@@ -164,7 +164,7 @@ const createOrder = async (userId, data) => {
       items.push({
         productId: product.id,
         sourceId: product.source_id,
-        packagingType: product.packaging_type,
+        packagingType: item.packagingType || product.packaging_type,
         quantity: item.quantity,
         unit: product.unit,
       });
@@ -225,12 +225,21 @@ const createOrder = async (userId, data) => {
     const order = o.rows[0];
 
     for (const it of items) {
+      // اجلب source_id و unit من المنتج
+      const pInfo = await client.query(
+        `SELECT source_id, unit FROM products WHERE id = $1`,
+        [it.productId]
+      );
+      const sourceId = it.sourceId || pInfo.rows[0]?.source_id || null;
+      const unit = it.unit || pInfo.rows[0]?.unit || 'bag';
+      const packagingType = it.packagingType || 'bagged';
+
       await client.query(
         `INSERT INTO order_items
          (order_id, product_id, source_id, packaging_type, quantity, unit,
           unit_price, discount, line_total)
          VALUES ($1, $2, $3, $4, $5, $6, NULL, 0, NULL)`,
-        [order.id, it.productId, it.sourceId, it.packagingType, it.quantity, it.unit]
+        [order.id, it.productId, sourceId, packagingType, it.quantity, unit]
       );
       await client.query(
         `UPDATE inventory SET reserved_qty = reserved_qty + $1, updated_at = NOW()

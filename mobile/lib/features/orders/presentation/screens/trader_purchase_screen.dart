@@ -36,6 +36,7 @@ class _TraderPurchaseScreenState extends State<TraderPurchaseScreen> {
   String _deliveryType = 'trader_pickup';
   String _submitMode = 'order_only';
   String _transportBeneficiary = 'driver';
+  String _packagingType = 'bagged';
   bool _loading = true;
   bool _sending = false;
   String? _error;
@@ -139,7 +140,7 @@ class _TraderPurchaseScreenState extends State<TraderPurchaseScreen> {
     try {
       final result = await _orders.createOrder(
         addressId: _deliveryType == 'alghouli_delivery' ? _addressId : null,
-        items: [{'productId': _productId, 'quantity': quantity}],
+        items: [{'productId': _productId, 'quantity': quantity, 'packagingType': _packagingType}],
         notes: _notes.text.trim(),
         deliveryType: _deliveryType,
         traderDriverId: _deliveryType == 'trader_pickup' ? _driverId : null,
@@ -203,8 +204,22 @@ class _TraderPurchaseScreenState extends State<TraderPurchaseScreen> {
                   TextField(
                     controller: _qty,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(prefixIcon: Icon(Icons.inventory_2), suffixText: 'كيس / طن'),
+                    decoration: InputDecoration(
+                      prefixIcon: const Icon(Icons.inventory_2),
+                      suffixText: _packagingType == 'bagged' ? 'كيس' : 'طن',
+                    ),
                   ),
+                  const SizedBox(height: 14),
+                  _label('نوع التعبئة'),
+                  Row(children: [
+                    Expanded(
+                      child: _packagingChoice('bagged', 'أكياس', Icons.inventory_2),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _packagingChoice('bulk', 'سائب', Icons.local_shipping),
+                    ),
+                  ]),
                   const SizedBox(height: 18),
                   _label('طريقة النقل'),
                   _choice('trader_pickup', 'لدي سائق وقاطرة', 'السائق والقاطرة تابعان للتاجر', Icons.local_shipping),
@@ -300,6 +315,43 @@ class _TraderPurchaseScreenState extends State<TraderPurchaseScreen> {
         margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.all(13),
         decoration: BoxDecoration(color: selected ? AppColors.primary.withOpacity(.08) : Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: selected ? AppColors.primary : AppColors.divider, width: selected ? 2 : 1)),
         child: Row(children: [Icon(icon, color: selected ? AppColors.primary : AppColors.textSecondary), const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.bold)), Text(subtitle, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary))])), if (selected) const Icon(Icons.check_circle, color: AppColors.primary)]),
+      ),
+    );
+  }
+
+  Widget _packagingChoice(String value, String label, IconData icon) {
+    final selected = _packagingType == value;
+    return InkWell(
+      onTap: () => setState(() => _packagingType = value),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary.withOpacity(.08) : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? AppColors.primary : AppColors.divider,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: selected ? AppColors.primary : AppColors.textSecondary, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: selected ? AppColors.primary : null,
+              ),
+            ),
+            if (selected) ...[
+              const SizedBox(width: 6),
+              const Icon(Icons.check_circle, color: AppColors.primary, size: 18),
+            ],
+          ],
+        ),
       ),
     );
   }

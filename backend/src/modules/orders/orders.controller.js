@@ -14,6 +14,7 @@ const createSchema = z.object({
   items: z.array(z.object({
     productId: z.string().uuid(),
     quantity: z.number().positive(),
+    packagingType: z.enum(['bagged', 'bulk']).optional(),
   })).min(1),
   notes: z.string().max(500).optional(),
   traderTruckPlate: z.string().max(30).optional(),
