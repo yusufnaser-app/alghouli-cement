@@ -52,11 +52,10 @@ jobs:
 
       - name: Set app icon from logo
         run: |
-          cd mobile
-          ls -la assets/images/logo.jpg
+          ls -la mobile/assets/images/logo.jpg
           pip install --quiet Pillow
-          python3 scripts/set_icon.py
-          ls -la android/app/src/main/res/mipmap-*/ic_launcher.png
+          python3 scripts/set_icon.py mobile
+          ls -la mobile/android/app/src/main/res/mipmap-*/ic_launcher.png
 
       - name: Copy google-services.json
         run: |
