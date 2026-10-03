@@ -11,6 +11,8 @@ import '../../../admin/presentation/screens/admin_home_screen.dart';
 import '../../../orders/presentation/screens/orders_list_screen.dart';
 import '../../../profile/presentation/screens/profile_screen.dart';
 import 'home_screen.dart';
+import '../../../notifications/presentation/screens/notifications_screen.dart';
+import '../../../orders/presentation/screens/trader_purchase_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   const MainNavigationScreen({super.key});
@@ -91,64 +93,53 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       return const DriverHomeScreen();
     }
 
-    final screens = const [
-      HomeScreen(),
-      CartScreen(),
-      OrdersListScreen(),
-      ProfileScreen(),
+    final screens = [
+      const HomeScreen(),
+      const SizedBox.shrink(),  // index 1 = زر طلب شراء (لا شاشة)
+      const OrdersListScreen(),
+      const NotificationsScreen(),
+      const ProfileScreen(),
     ];
 
     return Scaffold(
       body: IndexedStack(index: _index, children: screens),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _index,
-        onTap: (i) => setState(() => _index = i),
+        onTap: (i) {
+          if (i == 1) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const TraderPurchaseScreen()),
+            ).then((_) => _load());
+          } else {
+            setState(() => _index = i == 1 ? 0 : i);
+          }
+        },
         type: BottomNavigationBarType.fixed,
         selectedItemColor: AppColors.primary,
         unselectedItemColor: AppColors.textSecondary,
-        items: [
-          const BottomNavigationBarItem(
+        items: const [
+          BottomNavigationBarItem(
             icon: Icon(Icons.home_outlined),
             activeIcon: Icon(Icons.home),
             label: 'الرئيسية',
           ),
           BottomNavigationBarItem(
-            icon: Stack(
-              children: [
-                const Icon(Icons.shopping_cart_outlined),
-                if (_cart.totalQuantity > 0)
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: const BoxDecoration(
-                        color: AppColors.danger,
-                        shape: BoxShape.circle,
-                      ),
-                      constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
-                      child: Text(
-                        '${_cart.totalQuantity}',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 8,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            activeIcon: const Icon(Icons.shopping_cart),
-            label: 'السلة',
+            icon: Icon(Icons.add_circle_outline),
+            activeIcon: Icon(Icons.add_circle),
+            label: 'طلب شراء',
           ),
-          const BottomNavigationBarItem(
+          BottomNavigationBarItem(
             icon: Icon(Icons.receipt_long_outlined),
             activeIcon: Icon(Icons.receipt_long),
             label: 'طلباتي',
           ),
-          const BottomNavigationBarItem(
+          BottomNavigationBarItem(
+            icon: Icon(Icons.notifications_outlined),
+            activeIcon: Icon(Icons.notifications),
+            label: 'الإشعارات',
+          ),
+          BottomNavigationBarItem(
             icon: Icon(Icons.person_outline),
             activeIcon: Icon(Icons.person),
             label: 'حسابي',
