@@ -245,4 +245,52 @@ const listRoles = async () => {
   return r.rows;
 };
 
-module.exports = { listUsers, createUser, updateUser, setRoles, setStatus, resetPassword, listRoles };
+
+// ═══ تفاصيل المستخدم + Audit Log ═══
+const getUserDetails = async (userId) => {
+  const u = await query(`
+    SELECT u.*,
+           COALESCE(json_agg(DISTINCT r.name) FILTER (WHERE r.name IS NOT NULL), '[]') AS roles,
+           COALESCE(json_agg(DISTINCT jsonb_build_object('code', up.permission_code, 'granted', up.granted))
+             FILTER (WHERE up.permission_code IS NOT NULL), '[]') AS user_permissions
+    FROM users u
+    LEFT JOIN user_roles ur ON ur.user_id = u.id
+    LEFT JOIN roles r ON r.id = ur.role_id
+    LEFT JOIN user_permissions up ON up.user_id = u.id
+    WHERE u.id = $1
+    GROUP BY u.id
+  `, [userId]);
+  if (!u.rows.length) { const e = new Error('المستخدم غير موجود'); e.status = 404; throw e; }
+  const logs = await query(`
+    SELECT al.id, al.action, al.entity_type, al.entity_id,
+           al.old_values, al.new_values, al.created_at,
+           u2.full_name AS by_name
+    FROM audit_logs al
+    LEFT JOIN users u2 ON u2.id = al.user_id
+    WHERE al.entity_type = 'users' AND al.entity_id = $1
+    ORDER BY al.created_at DESC LIMIT 50
+  `, [userId]).catch(() => ({ rows: [] }));
+  return { user: u.rows[0], audit_log: logs.rows };
+};
+
+// ═══ منح/سحب صلاحية ═══
+const grantPermission = async (userId, code, granted, byUser) => {
+  await query(`
+    INSERT INTO user_permissions (user_id, permission_code, granted, granted_by)
+    VALUES ($1, $2, $3, $4)
+    ON CONFLICT (user_id, permission_code)
+    DO UPDATE SET granted = EXCLUDED.granted, granted_by = EXCLUDED.granted_by, granted_at = NOW()
+  `, [userId, code, granted, byUser]);
+  await query(`
+    INSERT INTO audit_logs (user_id, action, entity_type, entity_id, new_values)
+    VALUES ($1, $2, 'user_permissions', $3, $4)
+  `, [byUser, granted ? 'PERMISSION_GRANTED' : 'PERMISSION_REVOKED', userId, JSON.stringify({ code })]);
+  return { userId, code, granted };
+};
+
+const listAllPermissions = async () => {
+  const r = await query(`SELECT code, name_ar FROM permissions ORDER BY code`);
+  return r.rows;
+};
+
+module.exports = { listUsers, createUser, updateUser, setRoles, setStatus, resetPassword, listRoles, getUserDetails, grantPermission, listAllPermissions };

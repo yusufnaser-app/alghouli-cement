@@ -78,3 +78,24 @@ const listRoles = asyncHandler(async (req, res) => {
 });
 
 module.exports = { list, create, update, setRoles, setStatus, resetPassword, listRoles };
+
+const details = asyncHandler(async (req, res) => {
+  const data = await service.getUserDetails(req.params.id);
+  return response.success(res, data, 'تفاصيل المستخدم');
+});
+
+module.exports.details = details;
+
+const grantPermission = asyncHandler(async (req, res) => {
+  const { code, granted } = req.body;
+  const r = await service.grantPermission(req.params.id, code, !!granted, req.user.id);
+  return response.success(res, r, granted ? 'تم المنح' : 'تم السحب');
+});
+
+const listAllPermissions = asyncHandler(async (req, res) => {
+  const data = await service.listAllPermissions();
+  return response.success(res, data, 'كل الصلاحيات');
+});
+
+module.exports.grantPermission = grantPermission;
+module.exports.listAllPermissions = listAllPermissions;

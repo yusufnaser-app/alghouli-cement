@@ -15,10 +15,13 @@ router.patch('/orders/:id/status', requirePermission('orders.update'), controlle
 // ═══ إدارة المستخدمين ═══
 router.get('/users', requirePermission('users.view'), usersController.list);
 router.post('/users', requirePermission('users.create'), usersController.create);
+router.get('/users/:id/details', requirePermission('users.view'), usersController.details);
 router.patch('/users/:id', requirePermission('users.update'), usersController.update);
 router.patch('/users/:id/roles', requirePermission('roles.manage'), usersController.setRoles);
 router.patch('/users/:id/status', requirePermission('users.disable'), usersController.setStatus);
 router.post('/users/:id/reset-password', requirePermission('users.update'), usersController.resetPassword);
+router.get('/permissions', requirePermission('roles.view'), usersController.listAllPermissions);
+router.post('/users/:id/permissions', requirePermission('roles.manage'), usersController.grantPermission);
 router.get('/roles', requirePermission('roles.view'), usersController.listRoles);
 
 module.exports = router;
