@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_config.dart';
 import '../../../../core/storage/local_storage.dart';
+import '../../../../core/network/api_client.dart';
 import 'login_screen.dart';
 import '../../../home/presentation/screens/main_navigation_screen.dart';
 
@@ -42,18 +43,28 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _checkAuth() async {
-    await Future.delayed(const Duration(milliseconds: 2200));
+    await Future.delayed(const Duration(milliseconds: 1800));
     final token = await LocalStorage.getToken();
     if (!mounted) return;
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) =>
-            token != null && token.isNotEmpty
-                ? const MainNavigationScreen()
-                : const LoginScreen(),
-      ),
-    );
+
+    if (token != null && token.isNotEmpty) {
+      // تحقق أن التوكن صالح + جدده إن لزم
+      final ok = await ApiClient().validateSession();
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ok
+              ? const MainNavigationScreen()
+              : const LoginScreen(),
+        ),
+      );
+    } else {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      );
+    }
   }
 
   @override

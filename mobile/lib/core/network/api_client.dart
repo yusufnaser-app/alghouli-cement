@@ -134,4 +134,37 @@ String handleApiError(dynamic error) {
     return 'خطأ في الاتصال بالخادم';
   }
   return 'حدث خطأ غير متوقع';
+
+  /// يتحقق أن التوكن الحالي صالح. إذا منتهي، يحاول تجديده بـ refreshToken.
+  /// يعيد true إذا الجلسة سارية، false إذا يجب تسجيل الدخول.
+  Future<bool> validateSession() async {
+    try {
+      await dio.get('/auth/me');
+      return true;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 401) {
+        // حاول التجديد
+        final refresh = await LocalStorage.getRefreshToken();
+        if (refresh == null || refresh.isEmpty) return false;
+        try {
+          final res = await Dio(BaseOptions(baseUrl: AppConfig.apiBaseUrl))
+              .post('/auth/refresh-token', data: {'refreshToken': refresh});
+          final newToken = res.data['data']?['token'];
+          final newRefresh = res.data['data']?['refreshToken'];
+          if (newToken != null) {
+            await LocalStorage.saveToken(newToken.toString());
+            if (newRefresh != null) {
+              await LocalStorage.saveRefreshToken(newRefresh.toString());
+            }
+            return true;
+          }
+        } catch (_) {}
+        return false;
+      }
+      return true; // خطأ شبكة — نسمح بالمتابعة
+    } catch (_) {
+      return true;
+    }
+  }
+
 }
