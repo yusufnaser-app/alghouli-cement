@@ -1,5 +1,6 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { BrandingProvider } from './contexts/BrandingContext';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -56,7 +57,8 @@ const Placeholder = ({ icon, title }) => (
 export default function App() {
   return (
     <HashRouter>
-      <AuthProvider>
+      <BrandingProvider>
+        <AuthProvider>
         <Routes>
           <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
           <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
@@ -88,7 +90,8 @@ export default function App() {
           <Route path="/accounting-fulfillment" element={<ProtectedRoute><AccountingFulfillment /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </AuthProvider>
+        </AuthProvider>
+      </BrandingProvider>
     </HashRouter>
   );
 }
