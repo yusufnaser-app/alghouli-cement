@@ -289,3 +289,13 @@ extension AdminServiceUsers on AdminService {
     on DioException catch (e) { throw Exception(handleApiError(e)); }
   }
 }
+
+extension AdminServiceUserDetail on AdminService {
+  Future<Map<String, dynamic>> userDetails(String id) async {
+    try {
+      final api = ApiClient();
+      final res = await api.get('/admin/users/$id/details');
+      return Map<String, dynamic>.from(res.data['data'] as Map);
+    } on DioException catch (e) { throw Exception(handleApiError(e)); }
+  }
+}
