@@ -6,6 +6,15 @@ import '../../../../core/branding/branding_service.dart';
 import '../../../offers/presentation/screens/offers_screen.dart';
 import '../../../products/presentation/screens/product_details_screen.dart';
 import '../../../orders/presentation/screens/trader_purchase_screen.dart';
+import '../../../orders/presentation/screens/orders_list_screen.dart';
+import '../../../trader/presentation/screens/my_drivers_screen.dart';
+import '../../../trader/presentation/screens/request_fax_for_driver_screen.dart';
+import '../../../trader/presentation/screens/my_vehicles_screen.dart';
+import '../../../invoices/presentation/screens/invoices_screen.dart';
+import '../../../accounting/presentation/screens/my_statement_screen.dart';
+import '../../../notifications/presentation/screens/notifications_screen.dart';
+import '../../../profile/presentation/screens/profile_screen.dart';
+import '../../../contact/presentation/screens/contact_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -147,6 +156,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
 
+                      // ═══ شبكة الخدمات ═══
+                      _servicesGrid(),
+
                       // السلة القديمة تبقى للأفراد
                       // شريط البحث + الفلاتر
                       Container(
@@ -286,6 +298,107 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ],
                   ),
+      ),
+    );
+  }
+
+  // ═══ شبكة الخدمات ═══
+  Widget _servicesGrid() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 20, 16, 12),
+          child: Text(
+            'الخدمات',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+              color: AppColors.primary,
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: GridView.count(
+            crossAxisCount: 4,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
+            childAspectRatio: 0.82,
+            children: [
+              _serviceTile('طلباتي', Icons.receipt_long, AppColors.primary, () {
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const OrdersListScreen()));
+              }),
+              _serviceTile('القاطرات', Icons.local_shipping, AppColors.info, () {
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const MyDriversScreen()));
+              }),
+              _serviceTile('الفاكسات', Icons.description, AppColors.accent, () {
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const RequestFaxForDriverScreen()));
+              }),
+              _serviceTile('المدفوعات', Icons.payment, AppColors.success, () {
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const InvoicesScreen()));
+              }),
+              _serviceTile('كشف الحساب', Icons.account_balance_wallet, AppColors.primary, () {
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const MyStatementScreen()));
+              }),
+              _serviceTile('الإشعارات', Icons.notifications, AppColors.warning, () {
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const NotificationsScreen()));
+              }),
+              _serviceTile('حسابي', Icons.person, AppColors.info, () {
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const ProfileScreen()));
+              }),
+              _serviceTile('الدعم', Icons.support_agent, AppColors.secondary, () {
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const ContactScreen()));
+              }),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
+  Widget _serviceTile(String label, IconData icon, Color color, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.divider),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 22),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
       ),
     );
   }
