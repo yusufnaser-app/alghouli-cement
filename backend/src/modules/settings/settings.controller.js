@@ -1,3 +1,4 @@
+'use strict';
 const { z } = require('zod');
 const asyncHandler = require('../../utils/asyncHandler');
 const response = require('../../utils/response');
@@ -11,6 +12,21 @@ const updateSchema = z.object({
   })).min(1),
 });
 
+const brandingSchema = z.object({
+  primary_color: z.string().max(20).optional(),
+  secondary_color: z.string().max(20).optional(),
+  logo_url: z.string().max(2000).optional(),
+  favicon_url: z.string().max(2000).optional(),
+  login_image_url: z.string().max(2000).optional(),
+  home_banner_url: z.string().max(2000).optional(),
+  company_name: z.string().max(150).optional(),
+});
+
+const providerSchema = z.object({
+  enabled: z.boolean().optional(),
+}).passthrough();
+
+// ═══ الأساسيات ═══
 const listAll = asyncHandler(async (req, res) => {
   const data = await service.listAll();
   return response.success(res, data, 'جميع الإعدادات');
@@ -38,4 +54,32 @@ const remove = asyncHandler(async (req, res) => {
   return response.success(res, null, 'تم الحذف');
 });
 
-module.exports = { listAll, publicSettings, update, create, remove };
+// ═══ الهوية ═══
+const getBranding = asyncHandler(async (req, res) => {
+  const data = await service.getBranding();
+  return response.success(res, data, 'الهوية');
+});
+
+const updateBranding = asyncHandler(async (req, res) => {
+  const data = brandingSchema.parse(req.body);
+  const result = await service.updateBranding(data, req.user.id);
+  return response.success(res, result, 'تم تحديث الهوية');
+});
+
+// ═══ المزودون ═══
+const listProviders = asyncHandler(async (req, res) => {
+  const data = await service.listProviders();
+  return response.success(res, data, 'مزودو الخدمة');
+});
+
+const updateProvider = asyncHandler(async (req, res) => {
+  const config = providerSchema.parse(req.body);
+  const data = await service.updateProvider(req.params.name, config, req.user.id);
+  return response.success(res, data, 'تم تحديث المزود');
+});
+
+module.exports = {
+  listAll, publicSettings, update, create, remove,
+  getBranding, updateBranding,
+  listProviders, updateProvider,
+};
