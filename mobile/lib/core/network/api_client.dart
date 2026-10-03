@@ -132,18 +132,14 @@ String handleApiError(dynamic error) {
       return 'خطأ في الخادم: ${error.response?.statusCode}';
     }
     return 'خطأ في الاتصال بالخادم';
-  }
-  return 'حدث خطأ غير متوقع';
-
-  /// يتحقق أن التوكن الحالي صالح. إذا منتهي، يحاول تجديده بـ refreshToken.
-  /// يعيد true إذا الجلسة سارية، false إذا يجب تسجيل الدخول.
+  
+  /// يتحقق أن التوكن الحالي صالح. إذا منتهي، يجدد بـ refreshToken.
   Future<bool> validateSession() async {
     try {
       await dio.get('/auth/me');
       return true;
     } on DioException catch (e) {
       if (e.response?.statusCode == 401) {
-        // حاول التجديد
         final refresh = await LocalStorage.getRefreshToken();
         if (refresh == null || refresh.isEmpty) return false;
         try {
@@ -161,10 +157,11 @@ String handleApiError(dynamic error) {
         } catch (_) {}
         return false;
       }
-      return true; // خطأ شبكة — نسمح بالمتابعة
+      return true;
     } catch (_) {
       return true;
     }
   }
 
 }
+  return 'حدث خطأ غير متوقع';
