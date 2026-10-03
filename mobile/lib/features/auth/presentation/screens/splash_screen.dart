@@ -3,6 +3,8 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_config.dart';
 import '../../../../core/storage/local_storage.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/branding/branding_service.dart';
+import '../../../../core/widgets/brand_logo.dart';
 import 'login_screen.dart';
 import '../../../home/presentation/screens/main_navigation_screen.dart';
 
@@ -48,15 +50,13 @@ class _SplashScreenState extends State<SplashScreen>
     if (!mounted) return;
 
     if (token != null && token.isNotEmpty) {
-      // تحقق أن التوكن صالح + جدده إن لزم
       final ok = await ApiClient().validateSession();
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => ok
-              ? const MainNavigationScreen()
-              : const LoginScreen(),
+          builder: (_) =>
+              ok ? const MainNavigationScreen() : const LoginScreen(),
         ),
       );
     } else {
@@ -69,65 +69,62 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
+    final primary = BrandingService.primaryColor;
+    final secondary = BrandingService.secondaryColor;
+
     return Scaffold(
-      backgroundColor: AppColors.primary,
-      body: Center(
-        child: FadeTransition(
-          opacity: _fadeAnim,
-          child: ScaleTransition(
-            scale: _scaleAnim,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 130,
-                  height: 130,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(28),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
-                        blurRadius: 20,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topRight,
+            end: Alignment.bottomLeft,
+            colors: [primary, _darken(primary)],
+          ),
+        ),
+        child: Center(
+          child: FadeTransition(
+            opacity: _fadeAnim,
+            child: ScaleTransition(
+              scale: _scaleAnim,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  BrandLogo(size: 130),
+                  const SizedBox(height: 32),
+                  Text(
+                    BrandingService.companyName,
+                    style: const TextStyle(
+                      fontSize: 34,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      letterSpacing: 1,
+                    ),
                   ),
-                  child: const Icon(
-                    Icons.business,
-                    size: 80,
-                    color: AppColors.primary,
+                  const SizedBox(height: 8),
+                  const Text(
+                    'لبيع وتسويق الأسمنت إلكترونيًا',
+                    style: TextStyle(fontSize: 15, color: Colors.white70),
                   ),
-                ),
-                const SizedBox(height: 32),
-                const Text(
-                  AppConfig.companyName,
-                  style: TextStyle(
-                    fontSize: 34,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    letterSpacing: 1,
+                  const SizedBox(height: 60),
+                  const SizedBox(
+                    width: 30,
+                    height: 30,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2.5,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'لبيع وتسويق الأسمنت إلكترونيًا',
-                  style: TextStyle(fontSize: 15, color: Colors.white70),
-                ),
-                const SizedBox(height: 60),
-                const SizedBox(
-                  width: 30,
-                  height: 30,
-                  child: CircularProgressIndicator(
-                    color: Colors.white,
-                    strokeWidth: 2.5,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
       ),
     );
+  }
+
+  Color _darken(Color c) {
+    final hsl = HSLColor.fromColor(c);
+    return hsl.withLightness((hsl.lightness - 0.15).clamp(0.0, 1.0)).toColor();
   }
 }

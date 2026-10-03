@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/branding/branding_service.dart';
 import '../../../offers/presentation/screens/offers_screen.dart';
 import '../../../products/presentation/screens/product_details_screen.dart';
 import '../../../orders/presentation/screens/trader_purchase_screen.dart';
