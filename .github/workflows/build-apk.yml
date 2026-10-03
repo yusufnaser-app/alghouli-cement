@@ -39,6 +39,37 @@ jobs:
           cd mobile
           flutter create --platforms=android --org com.alghouli --project-name alghouli_app .
 
+      - name: Set app name (Arabic)
+        run: |
+          cd mobile
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          sed -i 's/android:label="[^"]*"/android:label="مؤسسة الغولي"/' "$MANIFEST"
+          echo "--- patched AndroidManifest ---"
+          grep "android:label" "$MANIFEST" || true
+
+      - name: Set app icon from logo
+        run: |
+          cd mobile
+          # تأكد من وجود الشعار
+          ls -la assets/images/logo.jpg
+
+          # حوّل الشعار إلى أحجام أيقونة
+          mkdir -p android/app/src/main/res/mipmap-hdpi
+          mkdir -p android/app/src/main/res/mipmap-mdpi
+          mkdir -p android/app/src/main/res/mipmap-xhdpi
+          mkdir -p android/app/src/main/res/mipmap-xxhdpi
+          mkdir -p android/app/src/main/res/mipmap-xxxhdpi
+
+          # استخدم ImageMagick (متوفّر افتراضيًا على ubuntu-latest)
+          convert assets/images/logo.jpg -resize 72x72 android/app/src/main/res/mipmap-hdpi/ic_launcher.png
+          convert assets/images/logo.jpg -resize 48x48 android/app/src/main/res/mipmap-mdpi/ic_launcher.png
+          convert assets/images/logo.jpg -resize 96x96 android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+          convert assets/images/logo.jpg -resize 144x144 android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+          convert assets/images/logo.jpg -resize 192x192 android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+
+          echo "--- icons ---"
+          ls -la android/app/src/main/res/mipmap-*/ic_launcher.png
+
       - name: Copy google-services.json
         run: |
           cd mobile
