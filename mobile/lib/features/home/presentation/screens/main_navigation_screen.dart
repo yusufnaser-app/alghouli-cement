@@ -110,7 +110,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const TraderPurchaseScreen()),
-            ).then((_) => _load());
+            );
           } else {
             setState(() => _index = i == 1 ? 0 : i);
           }
