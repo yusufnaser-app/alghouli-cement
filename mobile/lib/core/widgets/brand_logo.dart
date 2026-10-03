@@ -1,74 +1,64 @@
 import 'package:flutter/material.dart';
 import '../branding/branding_service.dart';
-import '../constants/app_colors.dart';
 
-/// شعار المؤسسة — يعرض الصورة إن وُجدت، وإلا يعرض أيقونة + الحرف الأول.
+/// شعار المؤسسة — يستخدم الصورة المحلية assets/images/logo.jpg
 class BrandLogo extends StatelessWidget {
   final double size;
   final Color? bgColor;
-  final Color? fgColor;
+  final bool circular;
 
   const BrandLogo({
     super.key,
-    this.size = 80,
+    this.size = 100,
     this.bgColor,
-    this.fgColor,
+    this.circular = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    final logo = BrandingService.logoUrl;
-    final name = BrandingService.companyName;
     final bg = bgColor ?? Colors.white;
-    final fg = fgColor ?? BrandingService.primaryColor;
+    final logoUrl = BrandingService.logoUrl;
 
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(size * 0.22),
+        shape: circular ? BoxShape.circle : BoxShape.rectangle,
+        borderRadius: circular ? null : BorderRadius.circular(size * 0.22),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withOpacity(0.15),
             blurRadius: size * 0.15,
             offset: Offset(0, size * 0.06),
           ),
         ],
       ),
+      padding: EdgeInsets.all(size * 0.08),
       clipBehavior: Clip.antiAlias,
-      child: logo.isNotEmpty
-          ? Image.network(
-              logo,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => _fallback(name, fg),
-              loadingBuilder: (_, child, progress) =>
-                  progress == null ? child : _fallback(name, fg),
-            )
-          : _fallback(name, fg),
+      child: _buildLogo(logoUrl),
     );
   }
 
-  Widget _fallback(String name, Color fg) {
-    final initial = name.trim().isNotEmpty ? name.trim()[0] : 'غ';
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.business, color: fg, size: size * 0.5),
-          if (size >= 70)
-            Padding(
-              padding: EdgeInsets.only(top: size * 0.05),
-              child: Text(
-                initial,
-                style: TextStyle(
-                  color: fg,
-                  fontSize: size * 0.2,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-        ],
+  Widget _buildLogo(String logoUrl) {
+    if (logoUrl.isNotEmpty && logoUrl.startsWith('http')) {
+      return Image.network(
+        logoUrl,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => _assetLogo(),
+      );
+    }
+    return _assetLogo();
+  }
+
+  Widget _assetLogo() {
+    return Image.asset(
+      'assets/images/logo.jpg',
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) => Icon(
+        Icons.business,
+        color: BrandingService.primaryColor,
+        size: size * 0.55,
       ),
     );
   }
@@ -89,21 +79,16 @@ class BrandLogoSmall extends StatelessWidget {
         borderRadius: BorderRadius.circular(size * 0.22),
       ),
       clipBehavior: Clip.antiAlias,
-      child: BrandingService.logoUrl.isNotEmpty
-          ? Image.network(
-              BrandingService.logoUrl,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Icon(
-                Icons.business,
-                color: BrandingService.primaryColor,
-                size: size * 0.65,
-              ),
-            )
-          : Icon(
-              Icons.business,
-              color: BrandingService.primaryColor,
-              size: size * 0.65,
-            ),
+      padding: EdgeInsets.all(size * 0.08),
+      child: Image.asset(
+        'assets/images/logo.jpg',
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => Icon(
+          Icons.business,
+          color: BrandingService.primaryColor,
+          size: size * 0.65,
+        ),
+      ),
     );
   }
 }

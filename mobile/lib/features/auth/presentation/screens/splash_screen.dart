@@ -70,7 +70,6 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     final primary = BrandingService.primaryColor;
-    final secondary = BrandingService.secondaryColor;
 
     return Scaffold(
       body: Container(
@@ -89,21 +88,27 @@ class _SplashScreenState extends State<SplashScreen>
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  BrandLogo(size: 130),
-                  const SizedBox(height: 32),
+                  BrandLogo(size: 140, circular: true),
+                  const SizedBox(height: 30),
                   Text(
                     BrandingService.companyName,
                     style: const TextStyle(
-                      fontSize: 34,
+                      fontSize: 32,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                       letterSpacing: 1,
                     ),
+                    textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'لبيع وتسويق الأسمنت إلكترونيًا',
-                    style: TextStyle(fontSize: 15, color: Colors.white70),
+                  const SizedBox(height: 10),
+                  Text(
+                    BrandingService.companySubtitle,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      color: Colors.white70,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 60),
                   const SizedBox(
