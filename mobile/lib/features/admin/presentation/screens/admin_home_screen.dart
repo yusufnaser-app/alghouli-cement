@@ -12,6 +12,10 @@ import 'admin_customers_screen.dart';
 import 'admin_drivers_screen.dart';
 import 'admin_users_screen.dart';
 import 'admin_settings_screen.dart';
+import 'admin_vehicles_screen.dart';
+import 'admin_products_screen.dart';
+import 'admin_sources_screen.dart';
+import 'admin_analytics_screen.dart';
 import 'admin_operations_screen.dart';
 import 'admin_reports_screen.dart';
 import 'admin_statement_lookup_screen.dart';
@@ -236,6 +240,30 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
               label: 'مركز العمليات',
               color: AppColors.danger,
               onTap: () => _open(const AdminOperationsScreen()),
+            ),
+            AdminIconTile(
+              icon: Icons.analytics,
+              label: 'تحليلات',
+              color: AppColors.primary,
+              onTap: () => _open(const AdminAnalyticsScreen()),
+            ),
+            AdminIconTile(
+              icon: Icons.factory,
+              label: 'مصانع',
+              color: AppColors.accent,
+              onTap: () => _open(const AdminSourcesScreen()),
+            ),
+            AdminIconTile(
+              icon: Icons.inventory_2,
+              label: 'منتجات',
+              color: AppColors.success,
+              onTap: () => _open(const AdminProductsScreen()),
+            ),
+            AdminIconTile(
+              icon: Icons.local_shipping,
+              label: 'مركبات',
+              color: AppColors.info,
+              onTap: () => _open(const AdminVehiclesScreen()),
             ),
             AdminIconTile(
               icon: Icons.settings,
