@@ -299,3 +299,44 @@ extension AdminServiceUserDetail on AdminService {
     } on DioException catch (e) { throw Exception(handleApiError(e)); }
   }
 }
+
+
+// ═══════════════════ Multi-Drop Destinations ═══════════════════
+extension AdminServiceDestinations on AdminService {
+  ApiClient get _api => ApiClient();
+
+  Future<List<Map<String, dynamic>>> faxDestinations(String faxId) async {
+    try {
+      final res = await _api.get('/faxes/$faxId/destinations');
+      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> warehouses() async {
+    try {
+      final res = await _api.get('/faxes/warehouses/list');
+      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> tradersList() async {
+    try {
+      final res = await _api.get('/faxes/traders/list');
+      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+
+  Future<void> saveDestinations(String faxId, List<Map<String, dynamic>> destinations) async {
+    try {
+      await _api.put('/faxes/$faxId/destinations', data: {'destinations': destinations});
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+}

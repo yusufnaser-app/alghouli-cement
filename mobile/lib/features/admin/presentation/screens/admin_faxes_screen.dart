@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../data/admin_service.dart';
 import 'admin_create_fax_screen.dart';
+import 'admin_fax_destinations_screen.dart';
 
 class AdminFaxesScreen extends StatefulWidget {
   const AdminFaxesScreen({super.key});
@@ -211,6 +212,23 @@ class _State extends State<AdminFaxesScreen> {
       actions.add(_btn('إلغاء', AppColors.danger, () async {
         final ok = await _confirm('إلغاء الفاكس؟');
         if (ok) { await _service.cancelFax(id); _load(); }
+      }));
+    }
+
+    // زر وجهات التسليم — متاح في كل الحالات عدا الملغى
+    if (status != 'CANCELLED') {
+      final loaded = double.tryParse(
+        (f['approved_quantity'] ?? f['requested_quantity'] ?? '0').toString()
+      ) ?? 0;
+      actions.add(_btn('وجهات التسليم', AppColors.primary, () async {
+        await Navigator.push(context, MaterialPageRoute(
+          builder: (_) => AdminFaxDestinationsScreen(
+            faxId: id,
+            faxNumber: f['fax_number']?.toString() ?? f['order_number']?.toString() ?? '',
+            loadedQuantity: loaded,
+          ),
+        ));
+        _load();
       }));
     }
 
