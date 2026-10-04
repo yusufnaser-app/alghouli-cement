@@ -306,6 +306,10 @@ const approvePayment = async (paymentId, reviewerId, ctx = {}) => {
     });
 
     await client.query('COMMIT');
+    // تكليف تلقائي بعد اعتماد الدفع — الفشل لا يؤثر على الاعتماد
+    if (orderStatus === 'PAYMENT_APPROVED') {
+      try { await require('../deliveries/auto-assign.service').tryAutoAssign(payment.order_id, reviewerId); } catch (e) { console.error('[auto-assign] hook:', e.message); }
+    }
     return { payment_id: paymentId, status: 'approved', order_status: orderStatus,
       currency: payment.payment_currency, customer_balance: posted.balance, order_paid: totals.paid, order_remaining: totals.remaining };
   } catch (err) {

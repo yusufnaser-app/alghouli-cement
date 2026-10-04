@@ -312,6 +312,18 @@ const requestFaxByStaff = async (data, staffUserId) => {
       throw err;
     }
 
+    // سائق واحد = فاكس نشط واحد
+    const act = await client.query(
+      `SELECT fax_number FROM loading_faxes
+       WHERE driver_id = $1 AND status IN ('REQUESTED','APPROVED','ISSUED','USED','READY_FOR_TRANSIT') LIMIT 1`,
+      [driver.id]
+    );
+    if (act.rows.length) {
+      const err = new Error(`السائق لديه فاكس نشط بالفعل: ${act.rows[0].fax_number || 'بانتظار الإصدار'}`);
+      err.status = 409;
+      throw err;
+    }
+
     const isManaged = driver.driver_type !== 'trader_driver';
 
     // توليد رقم الفاكس تلقائياً
@@ -606,18 +618,50 @@ const getFaxById = async (faxId) => {
 };
 
 const cancelFax = async (faxId, userId, reason) => {
-  const r = await query(
-    `UPDATE loading_faxes SET status = 'CANCELLED', cancelled_at = NOW(),
-     updated_by = $1, updated_at = NOW()
-     WHERE id = $2 AND status IN ('REQUESTED','APPROVED','ISSUED') RETURNING *`,
-    [userId, faxId]
-  );
-  if (r.rows.length === 0) {
-    const err = new Error('غير موجود');
-    err.status = 400;
+  const client = await pool.connect();
+  const released = [];
+  try {
+    await client.query('BEGIN');
+    const r = await client.query(
+      `UPDATE loading_faxes SET status = 'CANCELLED', cancelled_at = NOW(),
+       updated_by = $1, updated_at = NOW()
+       WHERE id = $2 AND status IN ('REQUESTED','APPROVED','ISSUED') RETURNING *`,
+      [userId, faxId]
+    );
+    if (r.rows.length === 0) {
+      const err = new Error('غير موجود');
+      err.status = 400;
+      throw err;
+    }
+    // الطلبات المكلَّفة على هذا الفاكس تعود PAYMENT_APPROVED وتُحذف وجهاتها المعلقة
+    const dests = await client.query(
+      `SELECT id, fulfills_order_id FROM delivery_destinations
+       WHERE fax_id = $1 AND fulfills_order_id IS NOT NULL AND status = 'PENDING'`, [faxId]);
+    for (const d of dests.rows) {
+      await client.query(`DELETE FROM delivery_destinations WHERE id = $1`, [d.id]);
+      const u = await client.query(
+        `UPDATE orders SET status = 'PAYMENT_APPROVED', fax_id = NULL, updated_at = NOW()
+         WHERE id = $1 AND status = 'PREPARING' RETURNING id`, [d.fulfills_order_id]);
+      if (u.rows.length) {
+        released.push(d.fulfills_order_id);
+        await client.query(
+          `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
+           VALUES ($1,'PREPARING','PAYMENT_APPROVED',$2,'إلغاء الفاكس — عودة الطلب للتكليف')`,
+          [d.fulfills_order_id, userId]);
+      }
+    }
+    await client.query('COMMIT');
+    // إعادة المحاولة على رحلات أخرى (بعد COMMIT؛ الفشل لا يؤثر على الإلغاء)
+    for (const oid of released) {
+      try { await require('../deliveries/auto-assign.service').tryAutoAssign(oid, userId); } catch (e) { console.error('[auto-assign] retry:', e.message); }
+    }
+    return r.rows[0];
+  } catch (err) {
+    await client.query('ROLLBACK');
     throw err;
+  } finally {
+    client.release();
   }
-  return r.rows[0];
 };
 
 const listPendingRouteAndPrice = async () => {

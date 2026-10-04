@@ -20,29 +20,10 @@ const listDestinations = async (faxId) => {
 };
 
 const replaceDestinations = async (client, faxId, destinations, userId) => {
-  // نحذف PENDING فقط — DELIVERED تبقى محفوظة كسجل تاريخي
   await client.query(
-    `DELETE FROM delivery_destinations WHERE fax_id = $1 AND status = 'PENDING'`,
+    `DELETE FROM delivery_destinations WHERE fax_id = $1 AND status = 'PENDING' AND fulfills_order_id IS NULL`,
     [faxId]
   );
-
-  // ✅ نجلب DELIVERED الموجودة لمنع إعادة إنشائها
-  const existingDelivered = await client.query(
-    `SELECT trader_id, warehouse_id, quantity, destination_type
-     FROM delivery_destinations
-     WHERE fax_id = $1 AND status = 'DELIVERED'`,
-    [faxId]
-  );
-
-  // دالة مساعدة: هل هذا الوجهة مطابقة لوجهة DELIVERED سابقة؟
-  const isDuplicateOfDelivered = (traderId, warehouseId, quantity) => {
-    return existingDelivered.rows.some(r => {
-      if (r.destination_type !== (traderId ? 'trader' : 'warehouse')) return false;
-      if (traderId && r.trader_id !== traderId) return false;
-      if (warehouseId && r.warehouse_id !== warehouseId) return false;
-      return Number(r.quantity) === Number(quantity);
-    });
-  };
 
   const inserted = [];
   for (let i = 0; i < destinations.length; i++) {
@@ -50,53 +31,44 @@ const replaceDestinations = async (client, faxId, destinations, userId) => {
 
     let traderInfo = null;
     if (d.destinationType === 'trader' && d.traderId) {
-      const t = await client.query(
-        `SELECT c.id, c.governorate, c.area, c.default_address, u.full_name, u.phone
-         FROM customers c JOIN users u ON u.id = c.user_id WHERE c.id = $1`,
-        [d.traderId]
-      );
+      const t = await client.query(`
+        SELECT c.id, c.governorate, c.area, c.default_address, u.full_name, u.phone
+        FROM customers c JOIN users u ON u.id = c.user_id WHERE c.id = $1
+      `, [d.traderId]);
       if (!t.rows.length) { const e = new Error('التاجر غير موجود'); e.status = 404; throw e; }
       traderInfo = t.rows[0];
     }
 
     let warehouseInfo = null;
     if (d.destinationType === 'warehouse' && d.warehouseId) {
-      const w = await client.query(
-        `SELECT id, name_ar, governorate, area, address_text, contact_phone, manager_name
-         FROM institution_warehouses WHERE id = $1`,
-        [d.warehouseId]
-      );
+      const w = await client.query(`
+        SELECT id, name_ar, governorate, area, address_text, contact_phone, manager_name
+        FROM institution_warehouses WHERE id = $1
+      `, [d.warehouseId]);
       if (!w.rows.length) { const e = new Error('المستودع غير موجود'); e.status = 404; throw e; }
       warehouseInfo = w.rows[0];
     }
 
-    // ✅ منع التكرار: إن كانت نفس الوجهة سبق تسليمها، نُخطي الإضافة
-    const traderId = traderInfo?.id || null;
-    const warehouseId = warehouseInfo?.id || null;
-    if (isDuplicateOfDelivered(traderId, warehouseId, d.quantity)) {
-      continue;  // تخطَّ هذه الوجهة المكررة
-    }
-
-    const res = await client.query(
-      `INSERT INTO delivery_destinations
-         (fax_id, destination_type, trader_id, warehouse_id,
-          quantity, unit, label, governorate, area, address_text,
-          contact_phone, contact_name, sort_order, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-       RETURNING *`,
-      [
-        faxId, d.destinationType,
-        traderId, warehouseId,
-        d.quantity, d.unit || 'bag',
-        d.label || traderInfo?.full_name || warehouseInfo?.name_ar || null,
-        d.governorate || traderInfo?.governorate || warehouseInfo?.governorate || null,
-        d.area || traderInfo?.area || warehouseInfo?.area || null,
-        d.addressText || traderInfo?.default_address || warehouseInfo?.address_text || null,
-        d.contactPhone || traderInfo?.phone || warehouseInfo?.contact_phone || null,
-        d.contactName || traderInfo?.full_name || warehouseInfo?.manager_name || null,
-        i, userId,
-      ]
-    );
+    const res = await client.query(`
+      INSERT INTO delivery_destinations
+        (fax_id, destination_type, trader_id, warehouse_id,
+         quantity, unit, label, governorate, area, address_text,
+         contact_phone, contact_name, sort_order, created_by)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      RETURNING *
+    `, [
+      faxId, d.destinationType,
+      traderInfo?.id || null,
+      warehouseInfo?.id || null,
+      d.quantity, d.unit || 'bag',
+      d.label || traderInfo?.full_name || warehouseInfo?.name_ar || null,
+      d.governorate || traderInfo?.governorate || warehouseInfo?.governorate || null,
+      d.area || traderInfo?.area || warehouseInfo?.area || null,
+      d.addressText || traderInfo?.default_address || warehouseInfo?.address_text || null,
+      d.contactPhone || traderInfo?.phone || warehouseInfo?.contact_phone || null,
+      d.contactName || traderInfo?.full_name || warehouseInfo?.manager_name || null,
+      i, userId,
+    ]);
     inserted.push(res.rows[0]);
   }
   return inserted;
@@ -126,7 +98,14 @@ const deliverDestination = async (destinationId, userId) => {
 
     let createdOrder = null;
 
-    if (dest.destination_type === 'trader' && dest.trader_id) {
+    // وجهة مرتبطة بطلب موجود ومدفوع: لا ننشئ طلبًا جديدًا (منع ازدواج الفوترة)
+    if (dest.fulfills_order_id) {
+      await client.query(`UPDATE orders SET status = 'DELIVERED', updated_at = NOW()
+                          WHERE id = $1 AND status IN ('PREPARING','IN_TRANSIT','PAYMENT_APPROVED')`, [dest.fulfills_order_id]);
+      await client.query(`INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
+                          VALUES ($1, NULL, 'DELIVERED', $2, $3)`,
+        [dest.fulfills_order_id, userId, `تسليم الوجهة من فاكس ${dest.fax_number || ''}`]);
+    } else if (dest.destination_type === 'trader' && dest.trader_id) {
       const year = new Date().getFullYear();
       const cnt = await client.query(
         `SELECT COUNT(*) FROM orders WHERE order_number LIKE $1`, [`GHO-${year}-%`]
@@ -147,17 +126,11 @@ const deliverDestination = async (destinationId, userId) => {
           dest.fax_id, dest.id]);
       createdOrder = orderRes.rows[0];
 
-      // ✅ احصل على المنتج الافتراضي للمصنع
-      const srcRes = await client.query(`
-        SELECT default_product_id FROM product_sources WHERE id = $1
-      `, [dest.factory_id]);
-      const productId = srcRes.rows[0]?.default_product_id || null;
-
       await client.query(`
         INSERT INTO order_items
-          (order_id, product_id, source_id, packaging_type, quantity, unit, unit_price, discount, line_total)
-        VALUES ($1, $2, $3, 'bagged', $4, $5, NULL, 0, NULL)
-      `, [createdOrder.id, productId, dest.factory_id, dest.quantity, dest.unit || 'bag']);
+          (order_id, source_id, packaging_type, quantity, unit, unit_price, discount, line_total)
+        VALUES ($1, $2, 'bagged', $3, $4, NULL, 0, NULL)
+      `, [createdOrder.id, dest.factory_id, dest.quantity, dest.unit || 'bag']);
 
       await client.query(`
         INSERT INTO order_status_history

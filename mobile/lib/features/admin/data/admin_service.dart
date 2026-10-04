@@ -418,6 +418,26 @@ extension AdminCatalogApi on AdminService {
   Future<List<Map<String, dynamic>>> deliveriesPendingAssignment() =>
       _getList('/deliveries/pending-assignment', 'DELIVERIES');
 
+  /// الرحلات النشطة مع الكمية المتبقية (اختياري: فلتر المحافظة)
+  Future<List<Map<String, dynamic>>> availableTrips({String? governorate}) =>
+      _getList('/deliveries/available-trips${governorate != null ? '?governorate=${Uri.encodeQueryComponent(governorate)}' : ''}', 'TRIPS');
+
+  /// تكليف طلب على رحلة قائمة
+  Future<Map<String, dynamic>> autoAssignOrder(String orderId) => _post('/deliveries/auto-assign/$orderId');
+
+  /// تكليف كل الطلبات المعلقة
+  Future<Map<String, dynamic>> autoAssignAll() => _post('/deliveries/auto-assign-all');
+
+  Future<Map<String, dynamic>> _post(String path) async {
+    try {
+      final res = await _client.post(path);
+      final d = res.data is Map ? res.data['data'] : null;
+      return d is Map ? Map<String, dynamic>.from(d) : <String, dynamic>{};
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+
   Future<void> productCreate(Map<String, dynamic> d) => _send('POST', '/products', d);
   Future<void> productUpdate(String id, Map<String, dynamic> d) => _send('PUT', '/products/$id', d);
   Future<void> productDelete(String id) => _send('DELETE', '/products/$id');

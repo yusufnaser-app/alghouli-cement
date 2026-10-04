@@ -2,6 +2,8 @@ const { z } = require('zod');
 const asyncHandler = require('../../utils/asyncHandler');
 const response = require('../../utils/response');
 const service = require('./deliveries.service');
+const { listAvailableTrips } = require('./available-trips.service');
+const autoAssignSvc = require('./auto-assign.service');
 
 const assignSchema = z.object({
   driverId: z.string().uuid(),
@@ -43,4 +45,20 @@ const pendingAssignment = asyncHandler(async (req, res) => {
   return response.success(res, await service.listPendingAssignment(), 'طلبات التوصيل بانتظار تعيين سائق');
 });
 
-module.exports = { assign, updateStatus, listByOrder, pendingAssignment };
+// الرحلات النشطة مع الكمية المتبقية
+const availableTrips = asyncHandler(async (req, res) => {
+  return response.success(res, await listAvailableTrips(req.query), 'الرحلات المتاحة');
+});
+
+// تكليف طلب واحد على رحلة قائمة
+const autoAssign = asyncHandler(async (req, res) => {
+  const r = await autoAssignSvc.autoAssignToTrip(req.params.orderId, req.user.id);
+  return response.success(res, r, r.assigned ? 'تم التكليف' : 'لم يُكلَّف الطلب: ' + (r.reason || ''));
+});
+
+// تكليف كل الطلبات المعلقة
+const autoAssignAll = asyncHandler(async (req, res) => {
+  return response.success(res, await autoAssignSvc.autoAssignPendingOrders(req.user.id), 'نتيجة التكليف التلقائي');
+});
+
+module.exports = { assign, updateStatus, listByOrder, pendingAssignment, availableTrips, autoAssign, autoAssignAll };

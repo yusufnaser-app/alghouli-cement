@@ -16,6 +16,7 @@ import 'admin_vehicles_screen.dart';
 import 'admin_products_screen.dart';
 import 'admin_categories_screen.dart';
 import 'admin_deliveries_screen.dart';
+import 'admin_fulfillment_queue_screen.dart';
 import 'admin_sources_screen.dart';
 import 'admin_analytics_screen.dart';
 import 'admin_operations_screen.dart';
@@ -260,6 +261,12 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
               label: 'التصنيفات',
               color: AppColors.brandRed,
               onTap: () => _open(const AdminCategoriesScreen()),
+            ),
+            AdminIconTile(
+              icon: Icons.playlist_add_check,
+              label: 'قائمة التكليف',
+              color: AppColors.brandRed,
+              onTap: () => _open(const AdminFulfillmentQueueScreen()),
             ),
             AdminIconTile(
               icon: Icons.assignment_ind,
