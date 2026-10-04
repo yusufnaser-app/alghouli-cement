@@ -970,6 +970,7 @@ const setRouteAndTransport = async (faxId, data, userId) => {
            transport_payer = $11,
            transport_payer_trader_id = $12,
            transport_payer_note = $13,
+           destination_trader_id = COALESCE($14, destination_trader_id),
            status = 'READY_FOR_TRANSIT',
            status_updated_at = NOW(),
            updated_at = NOW()
@@ -988,6 +989,7 @@ const setRouteAndTransport = async (faxId, data, userId) => {
         payerType,
         payerTraderId,
         data.transportPayerNote || null,
+        data.destinationTraderId || null,
       ]
     );
 

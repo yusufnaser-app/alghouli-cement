@@ -33,6 +33,7 @@ const routeTransportSchema = z.object({
   transportPayer: z.enum(['institution', 'trader']).optional(),
   transportPayerTraderId: z.string().uuid().optional(),
   transportPayerNote: z.string().max(500).optional(),
+  destinationTraderId: z.string().uuid().optional(),
 });
 const issueSchema = z.object({ faxNumber: z.string().min(1).max(50) });
 const cancelSchema = z.object({ reason: z.string().max(500).optional() });
