@@ -119,11 +119,17 @@ const deliverDestination = async (destinationId, userId) => {
           dest.fax_id, dest.id]);
       createdOrder = orderRes.rows[0];
 
+      // ✅ احصل على المنتج الافتراضي للمصنع
+      const srcRes = await client.query(`
+        SELECT default_product_id FROM product_sources WHERE id = $1
+      `, [dest.factory_id]);
+      const productId = srcRes.rows[0]?.default_product_id || null;
+
       await client.query(`
         INSERT INTO order_items
-          (order_id, source_id, packaging_type, quantity, unit, unit_price, discount, line_total)
-        VALUES ($1, $2, 'bagged', $3, $4, NULL, 0, NULL)
-      `, [createdOrder.id, dest.factory_id, dest.quantity, dest.unit || 'bag']);
+          (order_id, product_id, source_id, packaging_type, quantity, unit, unit_price, discount, line_total)
+        VALUES ($1, $2, $3, 'bagged', $4, $5, NULL, 0, NULL)
+      `, [createdOrder.id, productId, dest.factory_id, dest.quantity, dest.unit || 'bag']);
 
       await client.query(`
         INSERT INTO order_status_history
