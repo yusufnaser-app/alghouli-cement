@@ -410,3 +410,41 @@ extension AdminServiceDestinations on AdminService {
     }
   }
 }
+
+/// ═══ الكتالوج والتوصيلات (منتجات / تصنيفات / تعيين سائق) ═══
+extension AdminCatalogApi on AdminService {
+  Future<List<Map<String, dynamic>>> productsList() => _getList('/products', 'PRODUCTS');
+  Future<List<Map<String, dynamic>>> categoriesList() => _getList('/categories', 'CATEGORIES');
+  Future<List<Map<String, dynamic>>> deliveriesPendingAssignment() =>
+      _getList('/deliveries/pending-assignment', 'DELIVERIES');
+
+  Future<void> productCreate(Map<String, dynamic> d) => _send('POST', '/products', d);
+  Future<void> productUpdate(String id, Map<String, dynamic> d) => _send('PUT', '/products/$id', d);
+  Future<void> productDelete(String id) => _send('DELETE', '/products/$id');
+  Future<void> categoryCreate(Map<String, dynamic> d) => _send('POST', '/categories', d);
+  Future<void> categoryUpdate(String id, Map<String, dynamic> d) => _send('PUT', '/categories/$id', d);
+  Future<void> categoryDelete(String id) => _send('DELETE', '/categories/$id');
+  Future<void> assignDriver(String orderId, String driverId, String vehicleId) =>
+      _send('POST', '/deliveries/order/$orderId/assign', {'driverId': driverId, 'vehicleId': vehicleId});
+
+  Future<List<Map<String, dynamic>>> _getList(String path, String tag) async {
+    try {
+      final res = await _client.get(path);
+      return _asList(res.data, tag);
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+
+  Future<void> _send(String method, String path, [Map<String, dynamic>? data]) async {
+    try {
+      switch (method) {
+        case 'POST': await _client.post(path, data: data); break;
+        case 'PUT': await _client.put(path, data: data); break;
+        default: await _client.delete(path);
+      }
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+}

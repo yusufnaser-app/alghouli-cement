@@ -11,3 +11,4 @@ build/
 mobile/.dart_tool/
 mobile/build/
 backend/firebase-secrets/
+*.bak-*

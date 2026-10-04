@@ -14,6 +14,8 @@ import 'admin_users_screen.dart';
 import 'admin_settings_screen.dart';
 import 'admin_vehicles_screen.dart';
 import 'admin_products_screen.dart';
+import 'admin_categories_screen.dart';
+import 'admin_deliveries_screen.dart';
 import 'admin_sources_screen.dart';
 import 'admin_analytics_screen.dart';
 import 'admin_operations_screen.dart';
@@ -252,6 +254,18 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
               label: 'مصانع',
               color: AppColors.accent,
               onTap: () => _open(const AdminSourcesScreen()),
+            ),
+            AdminIconTile(
+              icon: Icons.category,
+              label: 'التصنيفات',
+              color: AppColors.brandRed,
+              onTap: () => _open(const AdminCategoriesScreen()),
+            ),
+            AdminIconTile(
+              icon: Icons.assignment_ind,
+              label: 'التوصيلات',
+              color: AppColors.brandRed,
+              onTap: () => _open(const AdminDeliveriesScreen()),
             ),
             AdminIconTile(
               icon: Icons.inventory_2,
