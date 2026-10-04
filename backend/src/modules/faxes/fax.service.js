@@ -797,17 +797,27 @@ const driverConfirmLoading = async (faxId, driverUserId, loadedQty, notes) => {
       [loadedQty, diff, driverUserId, faxId, notes ? String(notes).slice(0, 500) : null]
     );
 
-    await client.query(
-      `UPDATE orders
-       SET quantity_loaded = $1, quantity_discrepancy = $2,
-           loading_completed_at = NOW(), status = 'LOADED', updated_at = NOW()
-       WHERE id = (SELECT order_id FROM loading_faxes WHERE id = $3)`,
-      [loadedQty, diff, faxId]
-    );
+    // ═══ التحديث على الطلب (فقط إن كان الفاكس مرتبطًا بطلب) ═══
+    if (fax.order_id) {
+      await client.query(
+        `UPDATE orders
+         SET quantity_loaded = $1, quantity_discrepancy = $2,
+             loading_completed_at = NOW(), status = 'LOADED', updated_at = NOW()
+         WHERE id = $3`,
+        [loadedQty, diff, fax.order_id]
+      );
 
-    const accounting = await fulfillmentService.postActualLoading(
-      client, faxId, loadedQty, driverUserId, notes || 'ترحيل تلقائي عند تأكيد السائق للتحميل'
-    );
+      // الترحيل المحاسبي — فقط عند وجود طلب
+      try {
+        await fulfillmentService.postActualLoading(
+          client, faxId, loadedQty, driverUserId,
+          notes || 'ترحيل تلقائي عند تأكيد السائق للتحميل'
+        );
+      } catch (accErr) {
+        // الترحيل قد يفشل لأسباب معينة (فاكس بدون عناصر) — لا نوقف العملية
+        console.error('⚠️ تعذّر الترحيل المحاسبي:', accErr.message);
+      }
+    }
 
     await client.query(
       `INSERT INTO automation_events (event_type, entity_type, entity_id, payload)
