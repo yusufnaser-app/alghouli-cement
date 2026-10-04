@@ -1,5 +1,6 @@
 const express = require('express');
 const controller = require('./fax.controller');
+const destinations = require('./destination.controller');
 const { authenticate, requireRoles, requirePermission } = require('../../middlewares/auth');
 
 const router = express.Router();
@@ -31,6 +32,14 @@ router.patch('/:id/loading', requirePermission('loading.confirm'), controller.re
 router.patch('/:id/cancel', requirePermission('loading.update'), controller.cancel);
 
 // عام
+// ═══ Multi-Drop Destinations ═══
+router.get('/warehouses/list', requireRoles('admin','transport','sales'), destinations.warehouses);
+router.get('/traders/list', requireRoles('admin','transport','sales'), destinations.traders);
+router.get('/:id/destinations', destinations.list);
+router.put('/:id/destinations', requireRoles('admin','transport','sales'), destinations.replace);
+router.patch('/:id/destinations/:destId/deliver', requireRoles('driver'), destinations.deliver);
+
+// ═══ عام ═══
 router.get('/:id', controller.getById);
 
 module.exports = router;
