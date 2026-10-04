@@ -68,10 +68,37 @@ class AdminService {
   // ═══ Faxes ═══
   Future<List<Map<String, dynamic>>> faxes({String? status}) async {
     try {
-      final res = await _client.get('/faxes/pending');
-      final list = ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
-      if (status == null) return list;
-      return list.where((f) => f['status'] == status).toList();
+      // نجلب من operations-center الذي يحتوي كل الحالات
+      final res = await _client.get('/faxes/operations-center');
+      final data = res.data['data'];
+      if (data is! Map) return [];
+
+      // نجمع كل الفاكسات من كل القوائم (أي مفتاح يحتوي list of faxes)
+      final all = <Map<String, dynamic>>[];
+      for (final entry in data.entries) {
+        final list = entry.value;
+        if (list is List) {
+          for (final item in list) {
+            if (item is Map && item['fax_number'] != null) {
+              all.add(Map<String, dynamic>.from(item));
+            }
+          }
+        }
+      }
+
+      // نُزيل التكرار
+      final seen = <String>{};
+      final unique = <Map<String, dynamic>>[];
+      for (final f in all) {
+        final id = f['id']?.toString();
+        if (id != null && !seen.contains(id)) {
+          seen.add(id);
+          unique.add(f);
+        }
+      }
+
+      if (status == null) return unique;
+      return unique.where((f) => f['status'] == status).toList();
     } on DioException catch (e) {
       throw Exception(handleApiError(e));
     }
