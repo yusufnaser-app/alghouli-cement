@@ -227,7 +227,13 @@ const createOrder = async (userId, data) => {
     for (const it of items) {
       // اجلب source_id و unit من المنتج
       const pInfo = await client.query(
-        `SELECT source_id, unit FROM products WHERE id = $1`,
+        `SELECT p.source_id,
+                COALESCE(i.unit,
+                         CASE WHEN p.packaging_type = 'bagged' THEN 'bag' ELSE 'ton' END
+                ) AS unit
+         FROM products p
+         LEFT JOIN inventory i ON i.product_id = p.id
+         WHERE p.id = $1`,
         [it.productId]
       );
       const sourceId = it.sourceId || pInfo.rows[0]?.source_id || null;
