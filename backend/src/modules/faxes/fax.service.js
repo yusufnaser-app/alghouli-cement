@@ -1162,7 +1162,7 @@ const driverMarkDelivered = async (faxId, userId) => {
       `SELECT f.*, o.id AS order_id, o.status AS order_status
        FROM loading_faxes f
        LEFT JOIN orders o ON o.id = f.order_id
-       WHERE f.id = $1 FOR UPDATE`,
+       WHERE f.id = $1`,
       [faxId]
     );
     if (!f.rows.length) {
