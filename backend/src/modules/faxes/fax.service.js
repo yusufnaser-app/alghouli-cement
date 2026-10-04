@@ -482,7 +482,6 @@ const issueAndNotify = async (faxId, faxNumber, staffUserId) => {
 };
 
 module.exports = {
-  driverMarkDelivered,
   requestFax, requestFaxByStaff, createFaxFromOrder,
   approveFax, issueFax, issueAndNotify,
 };
@@ -1216,3 +1215,4 @@ const driverMarkDelivered = async (faxId, userId) => {
 };
 
 module.exports.listFaxesForExport = listFaxesForExport;
+module.exports.driverMarkDelivered = driverMarkDelivered;
