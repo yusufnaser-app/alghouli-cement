@@ -228,6 +228,21 @@ class _FaxDetailsScreenState extends State<FaxDetailsScreen> {
     );
   }
 
+  Future<void> _markDelivered() async {
+    final ok = await _confirm('تأكيد تسليم الشحنة للعميل؟');
+    if (!ok) return;
+    setState(() => _updating = true);
+    try {
+      await _service.markDelivered(widget.faxId);
+      await _load();
+      if (mounted) _msg('تم تسجيل التسليم بنجاح', AppColors.success);
+    } catch (e) {
+      if (mounted) _msg(e.toString().replaceFirst('Exception: ', ''), AppColors.danger);
+    } finally {
+      if (mounted) setState(() => _updating = false);
+    }
+  }
+
   Future<bool> _confirm(String msg) async {
     return await showDialog<bool>(
           context: context,
@@ -403,6 +418,10 @@ class _FaxDetailsScreenState extends State<FaxDetailsScreen> {
           if (['ISSUED', 'APPROVED'].contains(status) && f['used_at'] == null)
             _bigButton('تم التحميل', Icons.inventory, AppColors.success,
                 _updating ? null : _confirmLoading),
+
+          if (status == 'READY_FOR_TRANSIT' && f['delivered_at'] == null)
+            _bigButton('تم التسليم', Icons.check_circle, AppColors.success,
+                _updating ? null : _markDelivered),
           if (status == 'USED')
             Container(
               padding: const EdgeInsets.all(20),
