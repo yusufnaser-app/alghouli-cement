@@ -36,6 +36,17 @@ class _TraderPurchaseScreenState extends State<TraderPurchaseScreen> {
   String _deliveryType = 'trader_pickup';
   String _submitMode = 'order_only';
   String _transportBeneficiary = 'driver';
+  String _addressMode = 'saved'; // 'saved' | 'new'
+  String _newGov = 'صنعاء';
+  final _newAreaCtrl = TextEditingController();
+  final _newAddressCtrl = TextEditingController();
+
+  final _governorates = [
+    'صنعاء', 'عمران', 'الحديدة', 'تعز', 'عدن', 'حضرموت',
+    'إب', 'ذمار', 'المحويت', 'حجة', 'صعدة', 'البيضاء',
+    'الجوف', 'مأرب', 'شبوة', 'أبين', 'لحج', 'الضالع',
+    'ريمة', 'المهرة', 'سقطرى',
+  ];
   String _packagingType = 'bagged';
   bool _loading = true;
   bool _sending = false;
@@ -51,6 +62,8 @@ class _TraderPurchaseScreenState extends State<TraderPurchaseScreen> {
   void dispose() {
     _qty.dispose();
     _notes.dispose();
+    _newAreaCtrl.dispose();
+    _newAddressCtrl.dispose();
     super.dispose();
   }
 
@@ -122,9 +135,22 @@ class _TraderPurchaseScreenState extends State<TraderPurchaseScreen> {
       setState(() => _error = 'أدخل كمية صحيحة');
       return;
     }
-    if (_deliveryType == 'alghouli_delivery' && _addressId == null) {
-      setState(() => _error = 'اختر عنوان التسليم');
-      return;
+    if (_deliveryType == 'alghouli_delivery') {
+      if (_addressMode == 'saved') {
+        if (_addressId == null) {
+          setState(() => _error = 'اختر عنوان التسليم');
+          return;
+        }
+      } else {
+        if (_newAreaCtrl.text.trim().isEmpty) {
+          setState(() => _error = 'أدخل المديرية / المنطقة');
+          return;
+        }
+        if (_newAddressCtrl.text.trim().isEmpty) {
+          setState(() => _error = 'أدخل العنوان التفصيلي');
+          return;
+        }
+      }
     }
     if (_deliveryType == 'trader_pickup' && (_driverId == null || _vehicleId == null)) {
       setState(() => _error = 'اختر السائق والقاطرة');
@@ -138,6 +164,17 @@ class _TraderPurchaseScreenState extends State<TraderPurchaseScreen> {
 
     setState(() { _sending = true; _error = null; });
     try {
+      // إنشاء عنوان جديد إن اختار المستخدم "جديد"
+      if (_deliveryType == 'alghouli_delivery' && _addressMode == 'new') {
+        final newAddr = await _addresses.add(
+          label: _newAreaCtrl.text.trim(),
+          governorate: _newGov,
+          area: _newAreaCtrl.text.trim(),
+          addressText: _newAddressCtrl.text.trim(),
+        );
+        _addressId = newAddr.id;
+      }
+
       final result = await _orders.createOrder(
         addressId: _deliveryType == 'alghouli_delivery' ? _addressId : null,
         items: [{'productId': _productId, 'quantity': quantity, 'packagingType': _packagingType}],
@@ -290,16 +327,85 @@ class _TraderPurchaseScreenState extends State<TraderPurchaseScreen> {
   ]);
 
   Widget _deliveryAddress() => Column(children: [
-    const SizedBox(height: 12), _label('عنوان التسليم'),
-    if (_addressesList.isEmpty)
-      const Text('لا يوجد عنوان محفوظ. أضف عنوانًا من قسم العناوين أولًا.', style: TextStyle(color: AppColors.danger))
-    else
+    const SizedBox(height: 12),
+    _label('عنوان التسليم'),
+    Row(children: [
+      Expanded(child: _modeBtn('saved', 'عنوان محفوظ', Icons.bookmark_outline)),
+      const SizedBox(width: 8),
+      Expanded(child: _modeBtn('new', 'عنوان جديد', Icons.add_location_alt_outlined)),
+    ]),
+    const SizedBox(height: 12),
+    if (_addressMode == 'saved') ...[
+      if (_addressesList.isEmpty)
+        const Text('لا يوجد عنوان محفوظ. اختر "عنوان جديد".', style: TextStyle(color: AppColors.danger))
+      else
+        DropdownButtonFormField<String>(
+          value: _addressId,
+          items: _addressesList.map((a) => DropdownMenuItem<String>(
+            value: a.id,
+            child: Text('${a.label} — ${a.area} — ${a.governorate}'),
+          )).toList(),
+          onChanged: (v) => setState(() => _addressId = v),
+        ),
+    ] else ...[
+      _label('المحافظة'),
       DropdownButtonFormField<String>(
-        value: _addressId,
-        items: _addressesList.map((a) => DropdownMenuItem<String>(value: a.id, child: Text('${a.label} — ${a.area}'))).toList(),
-        onChanged: (v) => setState(() => _addressId = v),
+        value: _newGov,
+        decoration: const InputDecoration(prefixIcon: Icon(Icons.location_city)),
+        items: _governorates.map((g) => DropdownMenuItem(value: g, child: Text(g))).toList(),
+        onChanged: (v) => setState(() => _newGov = v ?? 'صنعاء'),
       ),
+      const SizedBox(height: 10),
+      _label('المديرية / المنطقة'),
+      TextField(
+        controller: _newAreaCtrl,
+        decoration: const InputDecoration(
+          prefixIcon: Icon(Icons.map_outlined),
+          hintText: 'مثال: بني الحارث',
+        ),
+      ),
+      const SizedBox(height: 10),
+      _label('العنوان التفصيلي'),
+      TextField(
+        controller: _newAddressCtrl,
+        maxLines: 2,
+        decoration: const InputDecoration(
+          prefixIcon: Icon(Icons.home_outlined),
+          hintText: 'مثال: جوار السوق - الشارع العام',
+        ),
+      ),
+    ],
   ]);
+
+  Widget _modeBtn(String value, String label, IconData icon) {
+    final selected = _addressMode == value;
+    return InkWell(
+      onTap: () => setState(() => _addressMode = value),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary.withOpacity(0.1) : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? AppColors.primary : AppColors.divider,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 18, color: selected ? AppColors.primary : AppColors.textSecondary),
+            const SizedBox(width: 6),
+            Text(label, style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: selected ? AppColors.primary : null,
+            )),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _choice(String value, String title, String subtitle, IconData icon) {
     final selected = (_deliveryType == value || _submitMode == value || _transportBeneficiary == value);
