@@ -16,6 +16,7 @@ class FaxDetailsScreen extends StatefulWidget {
 class _FaxDetailsScreenState extends State<FaxDetailsScreen> {
   final _service = DriverService();
   Map<String, dynamic>? _fax;
+  List<Map<String, dynamic>> _destinations = [];
   bool _loading = true;
   String? _error;
   bool _updating = false;
@@ -40,6 +41,8 @@ class _FaxDetailsScreenState extends State<FaxDetailsScreen> {
     } finally {
       setState(() => _loading = false);
     }
+    // جلب الوجهات
+    await _loadDestinations();
   }
 
   Future<void> _enterFactory() async {
@@ -388,6 +391,35 @@ class _FaxDetailsScreenState extends State<FaxDetailsScreen> {
           ]),
           if (f['route'] != null) _payerSection(f),
           const SizedBox(height: 20),
+
+          // ═══ وجهات التسليم ═══
+          if (_destinations.isNotEmpty) ...[
+            _destinationsSection(),
+            const SizedBox(height: 12),
+          ] else if (status == 'USED' || status == 'READY_FOR_TRANSIT') ...[
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.warning.withOpacity(0.3)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.schedule, color: AppColors.warning),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'بانتظار تحديد الوجهات من الإدارة',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
           if (status == 'READY_FOR_TRANSIT')
             Container(
               padding: const EdgeInsets.all(20),
@@ -532,6 +564,105 @@ class _FaxDetailsScreenState extends State<FaxDetailsScreen> {
         ],
       ),
     );
+  }
+
+  // ═══ الوجهات ═══
+  Future<void> _loadDestinations() async {
+    try {
+      final list = await _service.faxDestinations(widget.faxId);
+      if (mounted) setState(() => _destinations = list);
+    } catch (_) {}
+  }
+
+  Future<void> _deliverDestination(Map<String, dynamic> d) async {
+    final ok = await _confirm('تأكيد تسليم هذه الوجهة؟');
+    if (!ok) return;
+    setState(() => _updating = true);
+    try {
+      final r = await _service.deliverDestination(widget.faxId, d['id'].toString());
+      await _load();
+      if (!mounted) return;
+      final msg = r['order_created'] == true
+          ? '✅ تم التسليم — طلب جديد: ${r['order_number']}'
+          : '✅ تم التسليم';
+      _msg(msg, AppColors.success);
+    } catch (e) {
+      if (mounted) _msg(e.toString().replaceFirst('Exception: ', ''), AppColors.danger);
+    } finally {
+      if (mounted) setState(() => _updating = false);
+    }
+  }
+
+  Widget _destinationsSection() {
+    final delivered = _destinations.where((d) => d['status'] == 'DELIVERED').length;
+    final total = _destinations.length;
+
+    return _section('وجهات التسليم ($delivered/$total)', [
+      ..._destinations.map((d) {
+        final isTrader = d['destination_type'] == 'trader';
+        final isDelivered = d['status'] == 'DELIVERED';
+        final name = isTrader
+            ? (d['trader_name'] ?? '—')
+            : (d['warehouse_name'] ?? 'المستودع');
+        final icon = isTrader ? Icons.store : Icons.warehouse;
+        final phone = d['contact_phone'] ?? d['trader_phone'];
+        final gov = d['governorate'];
+        final area = d['area'];
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: isDelivered ? AppColors.success.withOpacity(0.08) : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isDelivered ? AppColors.success : AppColors.divider,
+              width: isDelivered ? 2 : 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, color: AppColors.primary, size: 22),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(name,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  ),
+                  if (isDelivered)
+                    const Icon(Icons.check_circle, color: AppColors.success, size: 20),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text('${_fmt(d['quantity'])} ${d['unit'] == 'ton' ? 'طن' : 'كيس'}'),
+              if (gov != null || area != null)
+                Text('📍 $gov${area != null ? " - $area" : ""}',
+                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              if (phone != null)
+                Text('📞 $phone',
+                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              if (!isDelivered) ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _updating ? null : () => _deliverDestination(d),
+                    icon: const Icon(Icons.check_circle, size: 18),
+                    label: const Text('تم التسليم'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.success,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      }).toList(),
+    ]);
   }
 
   Widget _bigButton(String label, IconData icon, Color color, VoidCallback? onTap) {

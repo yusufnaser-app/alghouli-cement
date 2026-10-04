@@ -206,3 +206,26 @@ class DriverService {
     }
   }
 }
+
+// ═══ Multi-Drop Destinations ═══
+extension DriverServiceDestinations on DriverService {
+  Future<List<Map<String, dynamic>>> faxDestinations(String faxId) async {
+    final api = ApiClient();
+    try {
+      final res = await api.get('/faxes/$faxId/destinations');
+      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+
+  Future<Map<String, dynamic>> deliverDestination(String faxId, String destId) async {
+    final api = ApiClient();
+    try {
+      final res = await api.patch('/faxes/$faxId/destinations/$destId/deliver');
+      return Map<String, dynamic>.from(res.data['data'] as Map);
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+}
