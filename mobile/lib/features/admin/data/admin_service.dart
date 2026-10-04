@@ -1,8 +1,29 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import '../../../core/network/api_client.dart';
 
 class AdminService {
   final ApiClient _client = ApiClient(); // made public for extensions
+
+  /// يستخرج قائمة من استجابة الـ API بشكل متسامح:
+  /// {data:[...]} أو {data:{items|rows|orders|payments:[...]}} أو [...] مباشرة.
+  /// لا يطبع أي توكن أو بيانات حساسة، عدد النتائج فقط (وفي وضع التطوير فقط).
+  List<Map<String, dynamic>> _asList(dynamic body, String tag) {
+    dynamic d = body is Map ? body['data'] : body;
+    if (d is Map) {
+      d = d['items'] ?? d['rows'] ?? d['orders'] ?? d['payments'] ?? d['list'];
+    }
+    final out = <Map<String, dynamic>>[];
+    if (d is List) {
+      for (final e in d) {
+        if (e is Map) out.add(Map<String, dynamic>.from(e));
+      }
+    } else if (d != null) {
+      if (kDebugMode) debugPrint('[$tag] unexpected data type: ${d.runtimeType}');
+    }
+    if (kDebugMode) debugPrint('[$tag] API OK, count=${out.length}');
+    return out;
+  }
 
   // ═══ Dashboard ═══
   Future<Map<String, dynamic>> dashboard() async {
@@ -18,18 +39,20 @@ class AdminService {
   Future<List<Map<String, dynamic>>> pendingPricing() async {
     try {
       final res = await _client.get('/orders/admin/pending-pricing');
-      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+      return _asList(res.data, 'PRICING');
     } on DioException catch (e) {
       throw Exception(handleApiError(e));
     }
   }
 
-  Future<void> setPricing(String orderId, {required double transportAmount, required List<Map<String, dynamic>> items, String? beneficiary}) async {
+  Future<void> setPricing(String orderId, {required double transportAmount, required List<Map<String, dynamic>> items, String? beneficiary, String? transportMode, String? reason}) async {
     try {
       await _client.patch('/orders/admin/$orderId/pricing', data: {
         'transportAmount': transportAmount,
         'items': items,
         if (beneficiary != null) 'transportBeneficiary': beneficiary,
+        if (transportMode != null) 'transportMode': transportMode,
+        if (reason != null && reason.isNotEmpty) 'reason': reason,
       });
     } on DioException catch (e) {
       throw Exception(handleApiError(e));
@@ -39,7 +62,27 @@ class AdminService {
   Future<List<Map<String, dynamic>>> allOrders() async {
     try {
       final res = await _client.get('/admin/orders');
-      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+      return _asList(res.data, 'ORDERS');
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+
+  /// طلبات الائتمان المعلقة (تتطلب صلاحية pricing.approve — الأدمن فقط).
+  Future<List<Map<String, dynamic>>> pendingCredit() async {
+    try {
+      final res = await _client.get('/orders/admin/pending-credit');
+      return _asList(res.data, 'CREDIT');
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+
+  /// تفاصيل طلب (مع البنود) لشاشة التسعير.
+  Future<Map<String, dynamic>> orderDetail(String orderId) async {
+    try {
+      final res = await _client.get('/orders/$orderId');
+      return Map<String, dynamic>.from(res.data['data'] as Map);
     } on DioException catch (e) {
       throw Exception(handleApiError(e));
     }
@@ -49,7 +92,7 @@ class AdminService {
   Future<List<Map<String, dynamic>>> pendingPayments() async {
     try {
       final res = await _client.get('/payments/pending');
-      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+      return _asList(res.data, 'PAYMENTS');
     } on DioException catch (e) {
       throw Exception(handleApiError(e));
     }

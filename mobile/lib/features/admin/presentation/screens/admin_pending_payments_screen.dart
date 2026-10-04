@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../data/admin_service.dart';
+import '../widgets/admin_async_view.dart';
 
 class AdminPendingPaymentsScreen extends StatefulWidget {
   const AdminPendingPaymentsScreen({super.key});
@@ -102,13 +103,13 @@ class _State extends State<AdminPendingPaymentsScreen> {
         title: const Text('الدفعات المعلقة'),
         actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _load)],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(child: Text(_error!))
-              : _payments.isEmpty
-                  ? const Center(child: Text('لا توجد دفعات معلقة'))
-                  : RefreshIndicator(
+      body: AdminAsyncView(
+        loading: _loading,
+        error: _error,
+        isEmpty: _payments.isEmpty,
+        emptyText: 'لا توجد دفعات معلقة حالياً',
+        onRetry: _load,
+        builder: () => RefreshIndicator(
                       onRefresh: _load,
                       child: ListView.builder(
                         padding: const EdgeInsets.all(12),
@@ -174,6 +175,7 @@ class _State extends State<AdminPendingPaymentsScreen> {
                         },
                       ),
                     ),
+      ),
     );
   }
 }
