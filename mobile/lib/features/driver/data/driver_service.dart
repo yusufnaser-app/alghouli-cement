@@ -196,4 +196,13 @@ class DriverService {
       throw Exception(handleApiError(e));
     }
   }
+
+  /// تأكيد التسليم من السائق
+  Future<void> markDelivered(String faxId) async {
+    try {
+      await _client.patch('/faxes/$faxId/mark-delivered');
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
 }

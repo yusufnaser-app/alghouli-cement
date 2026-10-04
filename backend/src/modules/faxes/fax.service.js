@@ -482,6 +482,7 @@ const issueAndNotify = async (faxId, faxNumber, staffUserId) => {
 };
 
 module.exports = {
+  driverMarkDelivered,
   requestFax, requestFaxByStaff, createFaxFromOrder,
   approveFax, issueFax, issueAndNotify,
 };
@@ -1150,4 +1151,69 @@ const listFaxesForExport = async ({ status, from, to } = {}) => {
   );
   return r.rows;
 };
+
+// ═══ السائق يؤكد التسليم ═══
+const driverMarkDelivered = async (faxId, userId) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1) الفاكس
+    const f = await client.query(
+      `SELECT f.*, o.id AS order_id, o.status AS order_status
+       FROM loading_faxes f
+       JOIN orders o ON o.id = f.order_id
+       WHERE f.id = $1 FOR UPDATE`,
+      [faxId]
+    );
+    if (!f.rows.length) {
+      const e = new Error('الرحلة غير موجودة'); e.status = 404; throw e;
+    }
+    const fax = f.rows[0];
+
+    // 2) التحقق من السائق
+    const d = await client.query(
+      `SELECT id FROM drivers WHERE user_id = $1`, [userId]
+    );
+    if (!d.rows.length || d.rows[0].id !== fax.driver_id) {
+      const e = new Error('غير مصرح'); e.status = 403; throw e;
+    }
+
+    // 3) تحديث الرحلات
+    await client.query(
+      `UPDATE deliveries
+       SET status = 'DELIVERED', delivered_at = NOW(), updated_at = NOW()
+       WHERE order_id = $1 AND driver_id = $2`,
+      [fax.order_id, fax.driver_id]
+    );
+
+    // 4) الفاكس
+    await client.query(
+      `UPDATE loading_faxes SET status = 'DELIVERED', updated_at = NOW()
+       WHERE id = $1`, [faxId]
+    );
+
+    // 5) الطلب
+    await client.query(
+      `UPDATE orders SET status = 'DELIVERED', updated_at = NOW()
+       WHERE id = $1`, [fax.order_id]
+    );
+
+    // 6) audit
+    await client.query(
+      `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
+       VALUES ($1, $2, 'DELIVERED', $3, 'تأكيد السائق التسليم')`,
+      [fax.order_id, fax.order_status, userId]
+    );
+
+    await client.query('COMMIT');
+    return { ok: true, fax_id: faxId };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
 module.exports.listFaxesForExport = listFaxesForExport;

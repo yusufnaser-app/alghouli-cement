@@ -182,7 +182,14 @@ const setRouteTransport = asyncHandler(async (req, res) => {
   return response.success(res, r, 'تم تحديد خط السير والأجرة');
 });
 
+
+const driverMarkDelivered = asyncHandler(async (req, res) => {
+  const r = await service.driverMarkDelivered(req.params.id, req.user.id);
+  return response.success(res, r, 'تم تسجيل التسليم');
+});
+
 module.exports = {
+  driverMarkDelivered,
   request, staffRequest, myFaxes, enterFactory, currentTrip, confirmLoading, awaitingRoute, setRouteTransport,
   pending, pendingRoutePrice, operationsCenter, exportCsv, approve, issue, issueAndNotify,
   recordLoading, cancel, getById,
