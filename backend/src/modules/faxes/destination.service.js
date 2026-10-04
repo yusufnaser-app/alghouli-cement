@@ -20,10 +20,29 @@ const listDestinations = async (faxId) => {
 };
 
 const replaceDestinations = async (client, faxId, destinations, userId) => {
+  // نحذف PENDING فقط — DELIVERED تبقى محفوظة كسجل تاريخي
   await client.query(
     `DELETE FROM delivery_destinations WHERE fax_id = $1 AND status = 'PENDING'`,
     [faxId]
   );
+
+  // ✅ نجلب DELIVERED الموجودة لمنع إعادة إنشائها
+  const existingDelivered = await client.query(
+    `SELECT trader_id, warehouse_id, quantity, destination_type
+     FROM delivery_destinations
+     WHERE fax_id = $1 AND status = 'DELIVERED'`,
+    [faxId]
+  );
+
+  // دالة مساعدة: هل هذا الوجهة مطابقة لوجهة DELIVERED سابقة؟
+  const isDuplicateOfDelivered = (traderId, warehouseId, quantity) => {
+    return existingDelivered.rows.some(r => {
+      if (r.destination_type !== (traderId ? 'trader' : 'warehouse')) return false;
+      if (traderId && r.trader_id !== traderId) return false;
+      if (warehouseId && r.warehouse_id !== warehouseId) return false;
+      return Number(r.quantity) === Number(quantity);
+    });
+  };
 
   const inserted = [];
   for (let i = 0; i < destinations.length; i++) {
@@ -31,44 +50,53 @@ const replaceDestinations = async (client, faxId, destinations, userId) => {
 
     let traderInfo = null;
     if (d.destinationType === 'trader' && d.traderId) {
-      const t = await client.query(`
-        SELECT c.id, c.governorate, c.area, c.default_address, u.full_name, u.phone
-        FROM customers c JOIN users u ON u.id = c.user_id WHERE c.id = $1
-      `, [d.traderId]);
+      const t = await client.query(
+        `SELECT c.id, c.governorate, c.area, c.default_address, u.full_name, u.phone
+         FROM customers c JOIN users u ON u.id = c.user_id WHERE c.id = $1`,
+        [d.traderId]
+      );
       if (!t.rows.length) { const e = new Error('التاجر غير موجود'); e.status = 404; throw e; }
       traderInfo = t.rows[0];
     }
 
     let warehouseInfo = null;
     if (d.destinationType === 'warehouse' && d.warehouseId) {
-      const w = await client.query(`
-        SELECT id, name_ar, governorate, area, address_text, contact_phone, manager_name
-        FROM institution_warehouses WHERE id = $1
-      `, [d.warehouseId]);
+      const w = await client.query(
+        `SELECT id, name_ar, governorate, area, address_text, contact_phone, manager_name
+         FROM institution_warehouses WHERE id = $1`,
+        [d.warehouseId]
+      );
       if (!w.rows.length) { const e = new Error('المستودع غير موجود'); e.status = 404; throw e; }
       warehouseInfo = w.rows[0];
     }
 
-    const res = await client.query(`
-      INSERT INTO delivery_destinations
-        (fax_id, destination_type, trader_id, warehouse_id,
-         quantity, unit, label, governorate, area, address_text,
-         contact_phone, contact_name, sort_order, created_by)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-      RETURNING *
-    `, [
-      faxId, d.destinationType,
-      traderInfo?.id || null,
-      warehouseInfo?.id || null,
-      d.quantity, d.unit || 'bag',
-      d.label || traderInfo?.full_name || warehouseInfo?.name_ar || null,
-      d.governorate || traderInfo?.governorate || warehouseInfo?.governorate || null,
-      d.area || traderInfo?.area || warehouseInfo?.area || null,
-      d.addressText || traderInfo?.default_address || warehouseInfo?.address_text || null,
-      d.contactPhone || traderInfo?.phone || warehouseInfo?.contact_phone || null,
-      d.contactName || traderInfo?.full_name || warehouseInfo?.manager_name || null,
-      i, userId,
-    ]);
+    // ✅ منع التكرار: إن كانت نفس الوجهة سبق تسليمها، نُخطي الإضافة
+    const traderId = traderInfo?.id || null;
+    const warehouseId = warehouseInfo?.id || null;
+    if (isDuplicateOfDelivered(traderId, warehouseId, d.quantity)) {
+      continue;  // تخطَّ هذه الوجهة المكررة
+    }
+
+    const res = await client.query(
+      `INSERT INTO delivery_destinations
+         (fax_id, destination_type, trader_id, warehouse_id,
+          quantity, unit, label, governorate, area, address_text,
+          contact_phone, contact_name, sort_order, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       RETURNING *`,
+      [
+        faxId, d.destinationType,
+        traderId, warehouseId,
+        d.quantity, d.unit || 'bag',
+        d.label || traderInfo?.full_name || warehouseInfo?.name_ar || null,
+        d.governorate || traderInfo?.governorate || warehouseInfo?.governorate || null,
+        d.area || traderInfo?.area || warehouseInfo?.area || null,
+        d.addressText || traderInfo?.default_address || warehouseInfo?.address_text || null,
+        d.contactPhone || traderInfo?.phone || warehouseInfo?.contact_phone || null,
+        d.contactName || traderInfo?.full_name || warehouseInfo?.manager_name || null,
+        i, userId,
+      ]
+    );
     inserted.push(res.rows[0]);
   }
   return inserted;
