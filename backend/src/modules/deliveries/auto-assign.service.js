@@ -45,7 +45,8 @@ const autoAssignToTrip = async (orderId, userId) => {
                - COALESCE((SELECT SUM(quantity) FROM delivery_destinations WHERE fax_id = f.id), 0) AS remaining
       FROM loading_faxes f
       WHERE f.status IN ('REQUESTED','APPROVED','ISSUED','USED','READY_FOR_TRANSIT')
-        AND f.factory_id = $1 AND f.delivery_governorate = $2
+        AND f.factory_id = $1
+    AND (f.delivery_governorate IS NULL OR f.delivery_governorate = $2)
         AND COALESCE(f.is_managed_by_institution, TRUE) = TRUE
       ORDER BY f.requested_at ASC
       FOR UPDATE OF f
@@ -64,6 +65,14 @@ const autoAssignToTrip = async (orderId, userId) => {
     `, [trip.id, order.customer_id, order.quantity, order.unit || 'bag', cu.full_name || null,
         order.governorate, order.area, order.address_text, cu.phone || null, cu.full_name || null,
         sort.rows[0].n, userId, orderId]);
+
+    // ✅ بعد أول وجهة، نُحدّث محافظة/منطقة الفاكس (لمنع فراغ delivery_governorate)
+    await client.query(`
+      UPDATE loading_faxes
+      SET delivery_governorate = COALESCE(delivery_governorate, $1),
+          delivery_area = COALESCE(delivery_area, $2)
+      WHERE id = $3
+    `, [order.governorate, order.area, trip.id]);
 
     await client.query(`UPDATE orders SET fax_id = $1, status = 'PREPARING', updated_at = NOW() WHERE id = $2`, [trip.id, orderId]);
     await client.query(

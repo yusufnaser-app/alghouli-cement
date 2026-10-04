@@ -148,19 +148,25 @@ const assignDriver = async (orderId, data, assignedBy) => {
 };
 
 const listPendingAssignment = async () => {
+  // ✅ LEFT JOINs: نسمح بطلبات قد يكون product_id/source_id فيها NULL
+  //    (الطلبات المولَّدة من تسليم الفاكس أو التي لم يكتمل تسعيرها بعد)
   const result = await query(`
     SELECT o.id, o.order_number, o.status, o.total_amount, o.shipping_amount,
            o.fax_requested, o.created_at,
-           u.full_name AS customer_name, u.phone AS customer_phone,
-           s.name_ar AS factory_name,
-           oi.quantity, oi.unit, p.name_ar AS product_name,
-           a.governorate, a.area, a.address_text
+           COALESCE(u.full_name, 'عميل') AS customer_name,
+           u.phone AS customer_phone,
+           COALESCE(s.name_ar, 'مصنع غير محدد') AS factory_name,
+           oi.quantity, COALESCE(oi.unit, 'bag') AS unit,
+           COALESCE(p.name_ar, 'بند غير محدد') AS product_name,
+           COALESCE(a.governorate, c.governorate) AS governorate,
+           COALESCE(a.area, c.area) AS area,
+           a.address_text
     FROM orders o
-    JOIN customers c ON c.id = o.customer_id
-    JOIN users u ON u.id = c.user_id
-    JOIN order_items oi ON oi.order_id = o.id
-    JOIN products p ON p.id = oi.product_id
-    JOIN product_sources s ON s.id = oi.source_id
+    LEFT JOIN customers c ON c.id = o.customer_id
+    LEFT JOIN users u ON u.id = c.user_id
+    LEFT JOIN order_items oi ON oi.order_id = o.id
+    LEFT JOIN products p ON p.id = oi.product_id
+    LEFT JOIN product_sources s ON s.id = oi.source_id
     LEFT JOIN customer_addresses a ON a.id = o.address_id
     WHERE o.delivery_type = 'alghouli_delivery'
       AND o.status = 'PAYMENT_APPROVED'
