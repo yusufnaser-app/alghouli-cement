@@ -804,15 +804,16 @@ const getMyOrders = async (userId) => {
 };
 
 const getOrderById = async (orderId, userId = null, isAdmin = false) => {
+  // ✅ LEFT JOINs: نسمح بطلب بلا customer/address/product (مثل الطلبات التلقائية من تسليم الفاكس)
   let sql = `
     SELECT o.*, c.current_balance, c.credit_limit, c.customer_type,
            u.full_name AS customer_name, u.phone AS customer_phone,
            a.label AS address_label, a.governorate, a.area,
            a.address_text, a.alt_phone
     FROM orders o
-    JOIN customers c ON c.id = o.customer_id
-    JOIN users u ON u.id = c.user_id
-    JOIN customer_addresses a ON a.id = o.address_id
+    LEFT JOIN customers c ON c.id = o.customer_id
+    LEFT JOIN users u ON u.id = c.user_id
+    LEFT JOIN customer_addresses a ON a.id = o.address_id
     WHERE o.id = $1`;
   const params = [orderId];
   if (!isAdmin && userId) {
@@ -823,13 +824,15 @@ const getOrderById = async (orderId, userId = null, isAdmin = false) => {
   if (r.rows.length === 0) return null;
   const order = r.rows[0];
   const its = await query(
-    `SELECT oi.*, p.name_ar AS product_name, p.grade,
+    `SELECT oi.*,
+            COALESCE(p.name_ar, 'بند غير محدد') AS product_name,
+            p.grade,
             s.name_ar AS source_name, s.code AS source_code,
             cat.name_ar AS category_name, cat.color_code, cat.color_name_ar
      FROM order_items oi
-     JOIN products p ON p.id = oi.product_id
-     JOIN product_sources s ON s.id = oi.source_id
-     JOIN product_categories cat ON cat.id = p.category_id
+     LEFT JOIN products p ON p.id = oi.product_id
+     LEFT JOIN product_sources s ON s.id = oi.source_id
+     LEFT JOIN product_categories cat ON cat.id = p.category_id
      WHERE oi.order_id = $1`,
     [orderId]
   );
