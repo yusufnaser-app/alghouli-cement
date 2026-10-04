@@ -1227,4 +1227,63 @@ const driverMarkDelivered = async (faxId, userId) => {
 };
 
 module.exports.listFaxesForExport = listFaxesForExport;
+
+// ═══ الأدمن يكتب سعر النقل ═══
+const setTransportRate = async (faxId, rate, userId) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const f = await client.query(
+      `SELECT * FROM loading_faxes WHERE id = $1`,
+      [faxId]
+    );
+    if (!f.rows.length) {
+      const e = new Error('الفاكس غير موجود'); e.status = 404; throw e;
+    }
+    const fax = f.rows[0];
+
+    if (!rate || rate <= 0) {
+      const e = new Error('السعر يجب أن يكون أكبر من صفر'); e.status = 400; throw e;
+    }
+
+    const baseQty = parseFloat(
+      fax.loaded_quantity || fax.approved_quantity || fax.requested_quantity || 0
+    );
+    const total = rate * baseQty;
+
+    await client.query(
+      `UPDATE loading_faxes
+       SET transport_rate = $1,
+           transport_rate_unit = 'bag',
+           transport_total = $2,
+           transport_base_on = CASE 
+             WHEN loaded_quantity IS NOT NULL THEN 'loaded_quantity'
+             WHEN approved_quantity IS NOT NULL THEN 'approved_quantity'
+             ELSE 'requested_quantity'
+           END,
+           transport_set_by = $3,
+           transport_set_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $4`,
+      [rate, total, userId, faxId]
+    );
+
+    await client.query('COMMIT');
+    return {
+      ok: true,
+      fax_id: faxId,
+      transport_rate: rate,
+      transport_total: total,
+      base_quantity: baseQty,
+    };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
 module.exports.driverMarkDelivered = driverMarkDelivered;
+module.exports.setTransportRate = setTransportRate;

@@ -189,7 +189,18 @@ const driverMarkDelivered = asyncHandler(async (req, res) => {
   return response.success(res, r, 'تم تسجيل التسليم');
 });
 
+
+const setTransportRate = asyncHandler(async (req, res) => {
+  const rate = parseFloat(req.body.rate);
+  if (isNaN(rate) || rate <= 0) {
+    return response.error(res, 'السعر يجب أن يكون رقمًا أكبر من صفر', 400);
+  }
+  const r = await service.setTransportRate(req.params.id, rate, req.user.id);
+  return response.success(res, r, 'تم حفظ سعر النقل');
+});
+
 module.exports = {
+  setTransportRate,
   driverMarkDelivered,
   request, staffRequest, myFaxes, enterFactory, currentTrip, confirmLoading, awaitingRoute, setRouteTransport,
   pending, pendingRoutePrice, operationsCenter, exportCsv, approve, issue, issueAndNotify,

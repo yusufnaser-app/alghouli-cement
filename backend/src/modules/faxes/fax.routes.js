@@ -13,6 +13,7 @@ router.get('/me/current', requireRoles('driver'), controller.currentTrip);
 router.patch('/:id/enter-factory', requireRoles('driver'), controller.enterFactory);
 router.patch('/:id/confirm-loading', requireRoles('driver'), controller.confirmLoading);
 router.patch('/:id/mark-delivered', requireRoles('driver'), controller.driverMarkDelivered);
+router.patch('/:id/set-transport-rate', requirePermission('transport.update', 'pricing.update'), controller.setTransportRate);
 
 // التاجر
 router.post('/request-for-driver', requireRoles('customer'), controller.request);
