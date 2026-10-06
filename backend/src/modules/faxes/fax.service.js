@@ -517,7 +517,7 @@ const enterFactory = async (faxId, driverUserId) => {
   const r = await query(
     `UPDATE loading_faxes SET factory_entered_at = NOW(), updated_at = NOW()
      WHERE id = $1 AND driver_id = (SELECT id FROM drivers WHERE user_id = $2)
-       AND status = 'ISSUED' AND factory_entered_at IS NULL RETURNING *`,
+       AND status IN ('APPROVED', 'ISSUED') AND factory_entered_at IS NULL RETURNING *`,
     [faxId, driverUserId]
   );
   if (r.rows.length === 0) {
@@ -534,7 +534,7 @@ const recordLoading = async (faxId, loadedQty, userId) => {
     await client.query('BEGIN');
     const f = await client.query(`SELECT requested_quantity,status FROM loading_faxes WHERE id=$1 FOR UPDATE`, [faxId]);
     if (!f.rows.length) { const err = new Error('الفاكس غير موجود'); err.status=404; throw err; }
-    if (f.rows[0].status !== 'ISSUED') { const err = new Error('لا يمكن تسجيل التحميل في هذه الحالة'); err.status=400; throw err; }
+    if (!['APPROVED', 'ISSUED'].includes(f.rows[0].status)) { const err = new Error('لا يمكن تسجيل التحميل في هذه الحالة'); err.status=400; throw err; }
     const requested = Number(f.rows[0].requested_quantity || 0);
     const diff = Number(loadedQty) - requested;
     const r = await client.query(`
