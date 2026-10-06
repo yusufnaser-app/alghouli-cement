@@ -1,4 +1,41 @@
 const { pool } = require('../../config/db');
+const { toMinor } = require('../accounting/accounting.engine');
+const { capacitySql, usedBagsSql, bagsH } = require('./trip-capacity');
+
+// الحالات التي تقبل وجهات جديدة (DELIVERED/CANCELLED وأي حالة أخرى مستبعدة بحكم القائمة)
+const ELIGIBLE_STATUSES = ['REQUESTED', 'APPROVED', 'ISSUED', 'USED', 'READY_FOR_TRANSIT'];
+
+const norm = (v) => String(v || '').trim();
+
+/** تقسيم خط السير على → أو , أو ، أو - ومطابقة عنصر كامل (لا substring). */
+const routeHasGovernorate = (route, governorate) => {
+  const g = norm(governorate);
+  if (!g || !route) return false;
+  return String(route).split(/[→,،\-]/).map(norm).filter(Boolean).includes(g);
+};
+
+/** نقاط ملاءمة الفاكس لمحافظة الطلب؛ null = غير مناسب. */
+const scoreTrip = (fax, governorate) => {
+  const g = norm(governorate);
+  if (norm(fax.delivery_governorate) === g && g) return { score: 100, reason: 'نفس المحافظة' };
+  if (fax.has_dest_in_gov) return { score: 90, reason: 'وجهة قائمة بنفس المحافظة' };
+  if (routeHasGovernorate(fax.route, g)) return { score: 80, reason: 'المحافظة ضمن خط السير' };
+  if (!norm(fax.delivery_governorate)) return { score: 50, reason: 'فاكس بلا محافظة محددة' };
+  return null;
+};
+
+/** أفضل رحلة: الأعلى نقاطًا ثم الأقدم (ترتيب الصفوف requested_at ASC)، بشرط كفاية المتبقي. */
+const pickTrip = (rows, governorate, needH) => {
+  const ranked = [];
+  rows.forEach((r, i) => {
+    const sc = scoreTrip(r, governorate);
+    if (!sc) return;
+    if (toMinor(r.capacity) - toMinor(r.used_bags) < needH) return;
+    ranked.push({ trip: r, ...sc, i });
+  });
+  ranked.sort((a, b) => b.score - a.score || a.i - b.i);
+  return ranked[0] || null;
+};
 
 /**
  * تكليف طلب مدفوع على رحلة قائمة (إضافة وجهة للفاكس).
@@ -34,28 +71,32 @@ const autoAssignToTrip = async (orderId, userId) => {
       await client.query('ROLLBACK');
       return { assigned: true, already: true, fax_id: done.rows[0].fax_id, fax_number: done.rows[0].fax_number, destination_id: done.rows[0].id };
     }
-    if (order.status !== 'PAYMENT_APPROVED') { await client.query('ROLLBACK'); return { assigned: false, reason: 'الطلب ليس بحالة PAYMENT_APPROVED' }; }
-    if (order.delivery_type !== 'alghouli_delivery') { await client.query('ROLLBACK'); return { assigned: false, reason: 'ليس توصيل مؤسسة' }; }
-    if (order.fax_id) { await client.query('ROLLBACK'); return { assigned: false, reason: 'للطلب فاكس مرتبط' }; }
+    if (order.status !== 'PAYMENT_APPROVED') { await client.query('ROLLBACK'); return { assigned: false, code: 'ORDER_NOT_APPROVED', reason: 'الطلب ليس بحالة PAYMENT_APPROVED' }; }
+    if (order.delivery_type !== 'alghouli_delivery') { await client.query('ROLLBACK'); return { assigned: false, code: 'NOT_INSTITUTION_DELIVERY', reason: 'ليس توصيل مؤسسة' }; }
+    if (order.fax_id) { await client.query('ROLLBACK'); return { assigned: false, code: 'ORDER_HAS_FAX', reason: 'للطلب فاكس مرتبط' }; }
     if (!order.source_id || !(Number(order.quantity) > 0) || !order.governorate) {
-      await client.query('ROLLBACK'); return { assigned: false, reason: 'بيانات الطلب ناقصة (مصنع/كمية/محافظة)' };
+      await client.query('ROLLBACK'); return { assigned: false, code: 'ORDER_DATA_INCOMPLETE', reason: 'بيانات الطلب ناقصة (مصنع/كمية/محافظة)' };
     }
 
-    // أول رحلة مناسبة: نفس المصنع والمحافظة وكمية متبقية كافية (قبل اعتماد الفاكس أو أثناءه)
+    // أفضل رحلة بالنقاط: نفس المصنع (شرط صارم) + حالة مناسبة + متبقٍ كافٍ بالأكياس
+    const gov = norm(order.governorate);
     const t = await client.query(`
-      SELECT f.id, f.fax_number, f.driver_id,
-             COALESCE(f.loaded_quantity, f.approved_quantity, f.requested_quantity, 0)
-               - COALESCE((SELECT SUM(quantity) FROM delivery_destinations WHERE fax_id = f.id), 0) AS remaining
+      SELECT f.id, f.fax_number, f.driver_id, f.status, f.delivery_governorate, f.route, f.requested_at,
+             ${capacitySql('f')} AS capacity,
+             ${usedBagsSql('f')} AS used_bags,
+             EXISTS (SELECT 1 FROM delivery_destinations dg
+                     WHERE dg.fax_id = f.id AND dg.status <> 'CANCELLED'
+                       AND TRIM(dg.governorate) = $2) AS has_dest_in_gov
       FROM loading_faxes f
-      WHERE f.status IN ('REQUESTED','APPROVED','ISSUED','USED','READY_FOR_TRANSIT')
+      WHERE f.status IN (${ELIGIBLE_STATUSES.map((x) => `'${x}'`).join(',')})
         AND f.factory_id = $1
-    AND (f.delivery_governorate IS NULL OR f.delivery_governorate = $2)
         AND COALESCE(f.is_managed_by_institution, TRUE) = TRUE
       ORDER BY f.requested_at ASC
       FOR UPDATE OF f
-    `, [order.source_id, order.governorate]);
-    const trip = t.rows.find((r) => Number(r.remaining) >= Number(order.quantity));
-    if (!trip) { await client.query('ROLLBACK'); return { assigned: false, reason: 'لا توجد رحلة مناسبة' }; }
+    `, [order.source_id, gov]);
+    const best = pickTrip(t.rows, gov, bagsH(order.quantity, order.unit));
+    if (!best) { await client.query('ROLLBACK'); return { assigned: false, code: 'NO_MATCHING_TRIP', reason: 'لا توجد رحلة مناسبة' }; }
+    const trip = best.trip;
 
     const sort = await client.query(`SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM delivery_destinations WHERE fax_id = $1`, [trip.id]);
     const cust = await client.query(`SELECT u.full_name, u.phone, u.id AS user_id FROM customers c JOIN users u ON u.id = c.user_id WHERE c.id = $1`, [order.customer_id]);
@@ -96,7 +137,8 @@ const autoAssignToTrip = async (orderId, userId) => {
         [cu.user_id, order.order_number, orderId]);
     }
     await client.query('COMMIT');
-    return { assigned: true, fax_id: trip.id, fax_number: trip.fax_number, destination_id: dest.rows[0].id };
+    return { assigned: true, fax_id: trip.id, fax_number: trip.fax_number, destination_id: dest.rows[0].id,
+             match_score: best.score, match_reason: best.reason };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -134,4 +176,4 @@ const tryAutoAssign = async (orderId, userId) => {
   catch (e) { console.error('[auto-assign] فشل:', e.message); return { assigned: false, reason: e.message }; }
 };
 
-module.exports = { autoAssignToTrip, autoAssignPendingOrders, tryAutoAssign };
+module.exports = { autoAssignToTrip, autoAssignPendingOrders, tryAutoAssign, scoreTrip, pickTrip, routeHasGovernorate };
