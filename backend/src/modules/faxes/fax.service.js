@@ -934,7 +934,6 @@ const driverConfirmLoading = async (faxId, driverUserId, loadedQty, notes) => {
       requested_quantity: requested,
       discrepancy: diff,
       has_discrepancy: Math.abs(diff) > 0.01,
-      accounting,
     };
   } catch (err) {
     await client.query('ROLLBACK');
