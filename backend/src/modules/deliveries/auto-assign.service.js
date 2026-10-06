@@ -13,10 +13,13 @@ const autoAssignToTrip = async (orderId, userId) => {
     await client.query('BEGIN');
     const o = await client.query(`
       SELECT o.id, o.order_number, o.status, o.delivery_type, o.customer_id, o.fax_id,
-             a.governorate, a.area, a.address_text,
+               COALESCE(a.governorate, c.governorate) AS governorate,
+               COALESCE(a.area, c.area) AS area,
+               a.address_text,
              oi.quantity, oi.unit, oi.source_id
       FROM orders o
-      LEFT JOIN customer_addresses a ON a.id = o.address_id
+        JOIN customers c ON c.id = o.customer_id
+        LEFT JOIN customer_addresses a ON a.id = o.address_id
       LEFT JOIN LATERAL (SELECT quantity, unit, source_id FROM order_items
                          WHERE order_id = o.id ORDER BY id ASC LIMIT 1) oi ON TRUE
       WHERE o.id = $1 FOR UPDATE OF o
