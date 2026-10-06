@@ -1,17 +1,7 @@
 const { pool, query } = require('../../config/db');
 const { queueSms } = require('../../services/sms.service');
 
-const generateFaxNumber = async (client) => {
-  const year = new Date().getFullYear();
-  const r = await client.query(
-    `SELECT COUNT(*) FROM loading_faxes 
-     WHERE fax_number IS NOT NULL 
-       AND fax_number LIKE $1`,
-    [`FX-${year}-%`]
-  );
-  const count = parseInt(r.rows[0].count, 10) + 1;
-  return `FX-${year}-${String(count).padStart(5, '0')}`;
-};
+const { generateFaxNumber } = require('../../utils/number-generator');
 
 
 

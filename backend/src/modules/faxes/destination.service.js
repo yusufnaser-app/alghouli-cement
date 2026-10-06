@@ -2,6 +2,7 @@
 const { pool, query } = require('../../config/db');
 const { toMinor } = require('../accounting/accounting.engine');
 const { sendPushNotification } = require('../../services/fcm.service');
+const { generateOrderNumber } = require('../../utils/number-generator');
 
 const listDestinations = async (faxId) => {
   const r = await query(`
@@ -294,12 +295,7 @@ const deliverDestination = async (destinationId, userId) => {
                           VALUES ($1, NULL, 'DELIVERED', $2, $3)`,
         [dest.fulfills_order_id, userId, `تسليم الوجهة من فاكس ${dest.fax_number || ''}`]);
     } else if (dest.destination_type === 'trader' && dest.trader_id) {
-      const year = new Date().getFullYear();
-      const cnt = await client.query(
-        `SELECT COUNT(*) FROM orders WHERE order_number LIKE $1`, [`GHO-${year}-%`]
-      );
-      const seq = (parseInt(cnt.rows[0].count, 10) + 1).toString().padStart(6, '0');
-      const orderNumber = `GHO-${year}-${seq}`;
+      const orderNumber = await generateOrderNumber(client);
 
       const orderRes = await client.query(`
         INSERT INTO orders

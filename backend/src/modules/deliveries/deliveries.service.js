@@ -1,13 +1,6 @@
 const { pool, query } = require('../../config/db');
 
-const generateTripNumber = async () => {
-  const year = new Date().getFullYear();
-  const r = await query(
-    `SELECT COUNT(*) FROM deliveries WHERE trip_number LIKE $1`,
-    [`TRP-${year}-%`]
-  );
-  return `TRP-${year}-${String(parseInt(r.rows[0].count, 10) + 1).padStart(6, '0')}`;
-};
+const { generateTripNumber, generateFaxNumber } = require('../../utils/number-generator');
 
 const assignDriver = async (orderId, data, assignedBy) => {
   const client = await pool.connect();
@@ -41,7 +34,7 @@ const assignDriver = async (orderId, data, assignedBy) => {
 
     const tripResults = [];
     for (const item of items.rows) {
-      const tripNumber = await generateTripNumber();
+      const tripNumber = await generateTripNumber(client);
 
       const veh = await client.query(
         `SELECT supports_bagged, supports_bulk FROM vehicles WHERE id = $1`,
@@ -116,8 +109,8 @@ const assignDriver = async (orderId, data, assignedBy) => {
           `INSERT INTO loading_faxes
            (order_id, driver_id, vehicle_id, factory_id, requested_quantity, status,
             requested_at, created_by, requested_by_user_id, trader_id, driver_type_snapshot,
-            is_managed_by_institution, transport_payer, transport_payer_trader_id)
-           VALUES ($1,$2,$3,$4,$5,'REQUESTED',NOW(),$6,$7,$8,$9,TRUE,$10,$11)
+            is_managed_by_institution, transport_payer, transport_payer_trader_id, fax_number)
+           VALUES ($1,$2,$3,$4,$5,'REQUESTED',NOW(),$6,$7,$8,$9,TRUE,$10,$11,$12)
            RETURNING id`,
           [orderId, data.driverId, data.vehicleId,
            (await client.query(`SELECT source_id FROM order_items WHERE order_id = $1 ORDER BY id ASC LIMIT 1`, [orderId])).rows[0].source_id,
@@ -125,7 +118,8 @@ const assignDriver = async (orderId, data, assignedBy) => {
            (await client.query(`SELECT user_id FROM customers WHERE id = $1`, [f.customer_id])).rows[0].user_id,
            f.customer_id, f.driver_type || 'institution_driver',
            f.transport_beneficiary === 'trader' ? 'trader' : 'institution',
-           f.transport_beneficiary === 'trader' ? f.customer_id : null]
+           f.transport_beneficiary === 'trader' ? f.customer_id : null,
+           await generateFaxNumber(client)]
         );
         await client.query(`UPDATE orders SET fax_id = $1 WHERE id = $2`, [fax.rows[0].id, orderId]);
       }

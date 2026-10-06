@@ -7,18 +7,8 @@ const fulfillmentService = require('../accounting/order-fulfillment.service');
 
 // ============== إنشاء الفاكس ==============
 
-const generateFaxNumber = async (client) => {
-  const year = new Date().getFullYear();
-  const r = await client.query(
-    `SELECT COALESCE(MAX(CAST(SUBSTRING(fax_number FROM '[0-9]+$') AS INTEGER)), 0) AS max_num
-     FROM loading_faxes
-     WHERE fax_number IS NOT NULL
-       AND fax_number LIKE $1`,
-    [`FX-${year}-%`]
-  );
-  const count = (r.rows[0].max_num || 0) + 1;
-  return `FX-${year}-${String(count).padStart(5, '0')}`;
-};
+// توليد الرقم الموحَّد (قفل استشاري + MAX) — src/utils/number-generator.js
+const { generateFaxNumber } = require('../../utils/number-generator');
 
 // إنشاء فاكس انطلاقًا من طلب شراء معتمد. يستعمل نفس جدول loading_faxes
 // ولا ينشئ دورة مستقلة للطلب.

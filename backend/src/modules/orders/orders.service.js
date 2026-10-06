@@ -5,14 +5,7 @@ const engine = require('../accounting/accounting.engine');
 const { logAudit } = require('../audit/audit.service');
 const ceilingsService = require('../ceilings/ceilings.service');
 
-const generateOrderNumber = async () => {
-  const year = new Date().getFullYear();
-  const r = await query(
-    `SELECT COUNT(*) FROM orders WHERE order_number LIKE $1`,
-    [`GHO-${year}-%`]
-  );
-  return `GHO-${year}-${String(parseInt(r.rows[0].count, 10) + 1).padStart(6, '0')}`;
-};
+const { generateOrderNumber } = require('../../utils/number-generator');
 
 const checkCreditAvailability = async (client, customerId, additionalAmount) => {
   const cust = await client.query(
@@ -197,7 +190,7 @@ const createOrder = async (userId, data) => {
     }
 
     const initialStatus = 'PENDING_PRICING';
-    const orderNumber = await generateOrderNumber();
+    const orderNumber = await generateOrderNumber(client);
 
     const o = await client.query(
       `INSERT INTO orders
@@ -595,7 +588,7 @@ const createGroupOrder = async (userId, data) => {
         const e = new Error('رقم القاطرة واسم السائق مطلوبان لكل قاطرة في المجموعة'); e.status = 400; throw e;
       }
 
-      const orderNumber = await generateOrderNumber();
+      const orderNumber = await generateOrderNumber(client);
       const o = await client.query(
         `INSERT INTO orders
          (order_number, customer_id, address_id, status, source,

@@ -33,7 +33,8 @@ const baseHandlers = () => [
   [/SELECT id FROM customer_addresses WHERE customer_id = \$1 AND is_default/, () => ({ rows: [{ id: 'addr1' }] })],
   [/SELECT COUNT\(\*\) FROM order_groups/, () => ({ rows: [{ count: '0' }] })],
   [/INSERT INTO order_groups/, () => ({ rows: [{ id: 'g1' }] })],
-  [/SELECT COUNT\(\*\) FROM orders WHERE order_number/, () => ({ rows: [{ count: '0' }] })],
+  [/pg_advisory_xact_lock/, () => ({ rows: [] })],
+  [/MAX\(CAST\(SUBSTRING\(order_number/, () => ({ rows: [{ max_num: 0 }] })],
   [/INSERT INTO orders/, (p) => ({ rows: [{ id: `o-${p[5]}`, order_number: 'GHO-2026-000001', status: 'PENDING_PRICING', created_at: new Date() }] })],
 ];
 

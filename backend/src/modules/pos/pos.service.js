@@ -1,4 +1,5 @@
 const { pool, query } = require('../../config/db');
+const { generateOrderNumber } = require('../../utils/number-generator');
 
 const listPoints = async () => {
   const r = await query(`SELECT * FROM sales_points ORDER BY created_at DESC`);
@@ -99,12 +100,7 @@ const createPosSale = async (userId, data) => {
     const totalAmount = subtotal + (data.shippingAmount || 0);
 
     // رقم الطلب
-    const year = new Date().getFullYear();
-    const cntRes = await client.query(
-      `SELECT COUNT(*) FROM orders WHERE order_number LIKE $1`,
-      [`GHO-${year}-%`]
-    );
-    const orderNumber = `GHO-${year}-${String(parseInt(cntRes.rows[0].count, 10) + 1).padStart(6, '0')}`;
+    const orderNumber = await generateOrderNumber(client);
 
     // احصل على عنوان افتراضي للعميل
     const addrRes = await client.query(
