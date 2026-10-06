@@ -332,12 +332,12 @@ const requestFaxByStaff = async (data, staffUserId) => {
     // إنشاء + إصدار فوري
     const fax = await client.query(
       `INSERT INTO loading_faxes
-       (order_id, driver_id, vehicle_id, factory_id, requested_quantity,
-        status, requested_at, notes, created_by,
-        requested_by_user_id, trader_id, driver_type_snapshot, is_managed_by_institution,
-           fax_number, approved_at, issued_at, approved_quantity)
-           delivery_governorate, delivery_area,
-       VALUES ($1,$2,$3,$4,$5,'ISSUED',NOW(),$6,$7,$8,$9,$10,$11,
+          (order_id, driver_id, vehicle_id, factory_id, requested_quantity,
+           status, requested_at, notes, created_by,
+           requested_by_user_id, trader_id, driver_type_snapshot, is_managed_by_institution,
+           fax_number, approved_at, issued_at, approved_quantity,
+           delivery_governorate, delivery_area)
+        VALUES ($1,$2,$3,$4,$5,'ISSUED',NOW(),$6,$7,$8,$9,$10,$11,
         $12, NOW(), NOW(), $5,
         $13, $14)
        RETURNING *`,
