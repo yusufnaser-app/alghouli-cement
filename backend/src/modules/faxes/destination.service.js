@@ -1,5 +1,7 @@
 'use strict';
 const { pool, query } = require('../../config/db');
+const { toMinor } = require('../accounting/accounting.engine');
+const { sendPushNotification } = require('../../services/fcm.service');
 
 const listDestinations = async (faxId) => {
   const r = await query(`
@@ -72,6 +74,192 @@ const replaceDestinations = async (client, faxId, destinations, userId) => {
     inserted.push(res.rows[0]);
   }
   return inserted;
+};
+
+// ═══════════════ Patch 2.3b: الوجهات + سعر النقل في معاملة واحدة ═══════════════
+const EDITABLE_STATUSES = ['REQUESTED', 'APPROVED', 'ISSUED', 'USED', 'READY_FOR_TRANSIT'];
+const BAGS_PER_TON = 20; // الكيس = 50 كغ
+
+const httpError = (message, status = 400, code = null) => {
+  const e = new Error(message);
+  e.status = status;
+  if (code) e.code = code;
+  return e;
+};
+
+// الكمية بالأكياس × 100 (عدد صحيح) — لا أخطاء عائمة
+const bagsH = (qty, unit) => toMinor(qty) * (unit === 'ton' ? BAGS_PER_TON : 1);
+
+// "صنعاء → ذمار" — يتجاهل الفارغ ويدمج التكرار المتتالي
+const deriveRoute = (rows) => {
+  const parts = [];
+  for (const r of rows) {
+    const g = String(r.governorate || '').trim();
+    if (g && parts[parts.length - 1] !== g) parts.push(g);
+  }
+  return parts.join(' → ');
+};
+
+const replaceDestinationsAndTransport = async (faxId, data, userId) => {
+  // require متأخر لتفادي أي دورة استيراد مع fax.service
+  const { applyTransportAndRoute } = require('./fax.service');
+  const hasPrice = data.transportRate !== undefined && data.transportRate !== null;
+
+  const client = await pool.connect();
+  let result;
+  let push = null;
+  try {
+    await client.query('BEGIN');
+
+    // 1) قفل الفاكس + بيانات السائق (LEFT JOIN: فاكسات ما قبل التحميل قد لا تحمل سائقًا)
+    const f = await client.query(
+      `SELECT f.*, d.driver_type, d.full_name AS driver_name,
+              COALESCE(d.phone, u.phone) AS driver_phone
+       FROM loading_faxes f
+       LEFT JOIN drivers d ON d.id = f.driver_id
+       LEFT JOIN users u ON u.id = d.user_id
+       WHERE f.id = $1
+       FOR UPDATE OF f`,
+      [faxId]
+    );
+    if (!f.rows.length) throw httpError('الفاكس غير موجود', 404);
+    const fax = f.rows[0];
+
+    // 2) قواعد الحالة
+    if (['DELIVERED', 'CANCELLED'].includes(fax.status)) {
+      throw httpError('لا يمكن تعديل وجهات فاكس مُسلَّم أو ملغى', 400, 'FAX_CLOSED');
+    }
+    if (!EDITABLE_STATUSES.includes(fax.status)) {
+      throw httpError(`لا يمكن تعديل الوجهات في الحالة ${fax.status}`, 400, 'INVALID_STATUS');
+    }
+    if (hasPrice) {
+      if (fax.status === 'READY_FOR_TRANSIT') {
+        throw httpError('تم تحديد خط السير وأجرة النقل لهذا الفاكس مسبقًا', 400, 'ALREADY_ROUTED');
+      }
+      if (fax.status !== 'USED') {
+        throw httpError('سعر النقل يُحدَّد بعد التحميل فقط', 400, 'TRANSPORT_NOT_ALLOWED_YET');
+      }
+      if (fax.transport_rate !== null && fax.transport_rate !== undefined) {
+        throw httpError('تم تحديد خط السير وأجرة النقل لهذا الفاكس مسبقًا', 400, 'ALREADY_ROUTED');
+      }
+      if (!fax.driver_id) throw httpError('لا يوجد سائق مرتبط بالفاكس', 400, 'NO_DRIVER');
+    }
+
+    // 3) الكميات: (وجهات باقية لا يستبدلها replaceDestinations + الجديدة) ≤ سعة الفاكس
+    const capacity = [fax.loaded_quantity, fax.approved_quantity, fax.requested_quantity]
+      .find((v) => v !== null && v !== undefined);
+    const capH = toMinor(capacity ?? 0);
+    const kept = await client.query(
+      `SELECT quantity, unit FROM delivery_destinations
+       WHERE fax_id = $1 AND status <> 'CANCELLED'
+         AND NOT (status = 'PENDING' AND fulfills_order_id IS NULL)`,
+      [faxId]
+    );
+    const keptH = kept.rows.reduce((s, r) => s + bagsH(r.quantity, r.unit), 0);
+    const newH = data.destinations.reduce((s, d) => s + bagsH(d.quantity, d.unit), 0);
+    if (keptH + newH > capH) {
+      throw httpError(
+        `مجموع كميات الوجهات (${(keptH + newH) / 100} كيس) يتجاوز كمية الفاكس (${capH / 100} كيس)`,
+        400, 'QUANTITY_EXCEEDS_LOADED'
+      );
+    }
+
+    // 4) متحمّل الأجرة (قبل أي كتابة)
+    let payer = 'institution';
+    let payerTraderId = null;
+    if (hasPrice) {
+      payer = data.transportPayer || 'institution';
+      if (payer === 'trader') {
+        payerTraderId = data.transportPayerTraderId || null;
+        if (!payerTraderId) {
+          const ids = [...new Set(
+            data.destinations.filter((d) => d.destinationType === 'trader' && d.traderId).map((d) => d.traderId)
+          )];
+          if (ids.length === 1) payerTraderId = ids[0];
+          else {
+            throw httpError(
+              ids.length === 0
+                ? 'لا توجد وجهة تاجر — حدّد transportPayerTraderId'
+                : 'عدة تجار في الوجهات — حدّد transportPayerTraderId',
+              400, 'TRANSPORT_PAYER_TRADER_REQUIRED'
+            );
+          }
+        }
+      }
+    }
+
+    // 5) استبدال الوجهات (الدالة الحالية كما هي)
+    await replaceDestinations(client, faxId, data.destinations, userId);
+    const all = (await client.query(
+      `SELECT * FROM delivery_destinations
+       WHERE fax_id = $1 AND status <> 'CANCELLED'
+       ORDER BY sort_order, created_at`,
+      [faxId]
+    )).rows;
+
+    // 6) المحافظة/المنطقة من أول وجهة — إن لم تحمل محافظة تبقى القيمة القديمة
+    const first = all[0];
+    const hasGov = !!(first && first.governorate);
+    const newGov = hasGov ? first.governorate : fax.delivery_governorate;
+    const newArea = hasGov ? (first.area || null) : fax.delivery_area;
+
+    if (hasPrice) {
+      const route = data.route || deriveRoute(all);
+      if (!route) {
+        throw httpError('تعذّر اشتقاق خط السير (لا محافظات في الوجهات) — أرسل route', 400, 'ROUTE_REQUIRED');
+      }
+      const applied = await applyTransportAndRoute(client, fax, {
+        route,
+        rate: data.transportRate,
+        unit: data.transportRateUnit || 'bag',
+        baseOn: data.transportBaseOn,
+        transportPayer: payer,
+        transportPayerTraderId: payerTraderId,
+        transportPayerNote: data.transportPayerNote,
+        deliveryGovernorate: newGov,
+        deliveryArea: newArea,
+        deliveryAddress: fax.delivery_address, // لا نمسح العنوان الحالي
+      }, userId, { deferPush: true });
+      push = applied._push || null;
+      result = {
+        transport_total: applied.transport_total,
+        base_quantity: applied.base_quantity,
+        new_status: applied.new_status,
+        route: applied.route,
+        warnings: [],
+      };
+    } else {
+      if (hasGov) {
+        await client.query(
+          `UPDATE loading_faxes SET delivery_governorate = $2, delivery_area = $3, updated_at = NOW() WHERE id = $1`,
+          [faxId, newGov, newArea]
+        );
+      }
+      result = {
+        transport_total: fax.transport_total !== null && fax.transport_total !== undefined ? Number(fax.transport_total) : null,
+        base_quantity: null,
+        new_status: fax.status,
+        route: fax.route || null,
+        warnings: fax.status === 'USED' ? ['TRANSPORT_NOT_SET'] : [],
+      };
+    }
+
+    await client.query('COMMIT');
+    result = { destinations: all, ...result };
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch (_) { /* تجاهل */ }
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  // 10) Push بعد COMMIT فقط — فشله لا يؤثر على الحفظ
+  if (push) {
+    Promise.resolve()
+      .then(() => sendPushNotification(...push))
+      .catch((e) => console.error('FCM error:', e.message));
+  }
+  return result;
 };
 
 const deliverDestination = async (destinationId, userId) => {
@@ -217,4 +405,4 @@ const listTraders = async () => {
   return r.rows;
 };
 
-module.exports = { listDestinations, replaceDestinations, deliverDestination, listWarehouses, listTraders };
+module.exports = { listDestinations, replaceDestinations, replaceDestinationsAndTransport, deliverDestination, listWarehouses, listTraders };

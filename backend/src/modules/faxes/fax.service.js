@@ -1035,13 +1035,15 @@ const listAwaitingRoute = async () => {
  * المتصل مسؤول عن: القفل، فحص ALREADY_ROUTED، COMMIT/ROLLBACK.
  * ملاحظة: بقي تنسيق الجسم (إزاحة 4 مسافات) كما كان عمدًا ليظهر في الفرق أنه لم يُمسّ.
  */
-const applyTransportAndRoute = async (client, fax, data, userId) => {
+const applyTransportAndRoute = async (client, fax, data, userId, options = {}) => {
   const faxId = fax.id;
 
     // قاعدة الحساب
     let baseQty = parseFloat(fax.loaded_quantity || fax.requested_quantity || 0);
     if (data.baseOn === 'requested_quantity') {
       baseQty = parseFloat(fax.requested_quantity || 0);
+    } else if (data.baseOn === 'approved_quantity') {
+      baseQty = parseFloat(fax.approved_quantity || fax.requested_quantity || 0);
     } else if (data.baseOn === 'delivered_quantity') {
       baseQty = parseFloat(fax.delivered_quantity || fax.loaded_quantity || 0);
     }
@@ -1049,7 +1051,10 @@ const applyTransportAndRoute = async (client, fax, data, userId) => {
     const rate = parseFloat(data.rate);
     // حساب بوحدات صحيحة (لا أخطاء فاصلة عائمة)
     const { toMinor: _tm, fromMinor: _fm, divRound: _dr } = require('../accounting/accounting.engine');
-    const total = parseFloat(_fm(_dr(BigInt(_tm(rate)) * BigInt(_tm(baseQty)), 100n)));
+    // الكمية بالأكياس (الكيس = 50 كغ). إن كان السعر "للطن" فالطن = 20 كيسًا → نقسم على 20 مرة واحدة (تقريب واحد).
+    const rateUnit = data.unit || 'bag';
+    const divisor = rateUnit === 'ton' ? 2000n : 100n;
+    const total = parseFloat(_fm(_dr(BigInt(_tm(rate)) * BigInt(_tm(baseQty)), divisor)));
 
     // تحديد من يتحمل أجور النقل — قبل أي استخدام
     const payerType = data.transportPayer || 'institution';
@@ -1202,23 +1207,31 @@ const applyTransportAndRoute = async (client, fax, data, userId) => {
        WHERE d.id = $1`,
       [fax.driver_id]
     );
+    let deferredPush = null;
     if (fcmRes.rows[0]?.fcm_token) {
-      sendPushNotification(
+      const pushArgs = [
         fcmRes.rows[0].fcm_token,
         'تم تحديد خط السير',
         `خط السير: ${data.route} — مستحق النقل: ${total} ريال.`,
-        { type: 'ROUTE_SET', faxId: faxId }
-      ).catch((e) => console.error('FCM error:', e.message));
+        { type: 'ROUTE_SET', faxId: faxId },
+      ];
+      if (options.deferPush) {
+        deferredPush = pushArgs; // المتصل يرسله بعد COMMIT
+      } else {
+        sendPushNotification(...pushArgs).catch((e) => console.error('FCM error:', e.message));
+      }
     }
 
 
-  return {
+  const out = {
     id: faxId,
     route: data.route,
     transport_total: total,
     base_quantity: baseQty,
     new_status: 'READY_FOR_TRANSIT',
   };
+  if (deferredPush) out._push = deferredPush;
+  return out;
 };
 
 const setRouteAndTransport = async (faxId, data, userId) => {
