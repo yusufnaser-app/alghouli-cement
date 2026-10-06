@@ -37,6 +37,7 @@ const routeTransportSchema = z.object({
   transportPayerNote: z.string().max(500).optional(),
   destinationTraderId: z.string().uuid().optional(),
 });
+const approveSchema = z.object({ deliveryGovernorate: z.string().trim().max(200).optional() });
 const issueSchema = z.object({ faxNumber: z.string().min(1).max(50) });
 const cancelSchema = z.object({ reason: z.string().max(500).optional() });
 const loadingSchema = z.object({ loadedQuantity: z.number().min(0) });
@@ -108,7 +109,8 @@ const operationsCenter = asyncHandler(async (req, res) => {
 });
 
 const approve = asyncHandler(async (req, res) => {
-  const r = await service.approveFax(req.params.id, req.user.id);
+  const { deliveryGovernorate } = approveSchema.parse(req.body || {});
+  const r = await service.approveFax(req.params.id, req.user.id, deliveryGovernorate);
   return response.success(res, r, 'تم اعتماد الفاكس');
 });
 

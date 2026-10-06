@@ -403,12 +403,14 @@ const requestFaxByStaff = async (data, staffUserId) => {
 };
 
 // ============== الاعتماد والإصدار ==============
-const approveFax = async (faxId, userId) => {
+const approveFax = async (faxId, userId, deliveryGovernorate = null) => {
+  // المحافظة العامة اختيارية: إن لم تُرسل (أو أُرسلت فارغة) تبقى القيمة الحالية. لا سعر نقل هنا.
   const r = await query(
     `UPDATE loading_faxes SET status = 'APPROVED', approved_at = NOW(),
+     delivery_governorate = COALESCE($3, delivery_governorate),
      updated_by = $1, updated_at = NOW()
      WHERE id = $2 AND status = 'REQUESTED' RETURNING *`,
-    [userId, faxId]
+    [userId, faxId, deliveryGovernorate || null]
   );
   if (r.rows.length === 0) {
     const err = new Error('غير موجود أو ليس بانتظار الاعتماد');
