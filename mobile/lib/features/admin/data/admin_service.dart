@@ -8,7 +8,8 @@ class AdminService {
   /// يستخرج قائمة من استجابة الـ API بشكل متسامح:
   /// {data:[...]} أو {data:{items|rows|orders|payments:[...]}} أو [...] مباشرة.
   /// لا يطبع أي توكن أو بيانات حساسة، عدد النتائج فقط (وفي وضع التطوير فقط).
-  List<Map<String, dynamic>> _asList(dynamic body, String tag) {
+  
+List<Map<String, dynamic>> _asList(dynamic body, String tag) {
     dynamic d = body is Map ? body['data'] : body;
     if (d is Map) {
       d = d['items'] ?? d['rows'] ?? d['orders'] ?? d['payments'] ?? d['list'];
@@ -122,7 +123,7 @@ class AdminService {
         final list = entry.value;
         if (list is List) {
           for (final item in list) {
-            if (item is Map && item['fax_number'] != null) {
+            if (item is Map) {   // ✅ لا نفلتر على fax_number — الفاكس قد يكون REQUESTED بدون رقم
               all.add(Map<String, dynamic>.from(item));
             }
           }
