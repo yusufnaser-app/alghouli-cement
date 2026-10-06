@@ -60,6 +60,7 @@ class _State extends State<AdminCreateFaxScreen> {
     }
     if (widget.initialArea != null) _areaCtrl.text = widget.initialArea!;
     _sourceId = widget.initialFactoryId;
+    _loadLookups();  // ✅ تحميل المصادر/السائقين/الشاحنات
   }
 
   @override
