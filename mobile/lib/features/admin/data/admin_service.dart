@@ -163,6 +163,8 @@ class AdminService {
     required double quantity,
     String? orderId,
     String? notes,
+    String? deliveryGovernorate,
+    String? deliveryArea,
   }) async {
     try {
       await _client.post('/faxes/staff/create', data: {
@@ -172,6 +174,10 @@ class AdminService {
         'quantity': quantity,
         if (orderId != null && orderId.isNotEmpty) 'orderId': orderId,
         if (notes != null && notes.isNotEmpty) 'notes': notes,
+        if (deliveryGovernorate != null && deliveryGovernorate.isNotEmpty)
+          'deliveryGovernorate': deliveryGovernorate,
+        if (deliveryArea != null && deliveryArea.isNotEmpty)
+          'deliveryArea': deliveryArea,
       });
     } on DioException catch (e) {
       throw Exception(handleApiError(e));

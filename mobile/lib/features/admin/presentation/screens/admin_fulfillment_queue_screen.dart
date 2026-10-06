@@ -3,6 +3,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../data/admin_service.dart';
 import '../widgets/admin_async_view.dart';
 import 'admin_deliveries_screen.dart';
+import 'admin_create_fax_screen.dart';
 
 /// قائمة التكليف: طلبات معتمدة بانتظار تكليف + الرحلات النشطة وكمياتها المتبقية
 class AdminFulfillmentQueueScreen extends StatefulWidget {
@@ -49,6 +50,26 @@ class _QState extends State<AdminFulfillmentQueueScreen> {
       if (mounted) _snack(e.toString().replaceFirst('Exception: ', ''), AppColors.danger);
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// فتح شاشة إنشاء فاكس مع تعبئة مسبقة من الطلب
+  Future<void> _createFaxForOrder(Map<String, dynamic> o) async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AdminCreateFaxScreen(
+          initialOrderId: o['id']?.toString(),
+          initialFactoryId: o['source_id']?.toString() ?? o['factory_id']?.toString(),
+          initialQuantity: double.tryParse(o['quantity']?.toString() ?? '0'),
+          initialGovernorate: o['governorate']?.toString(),
+          initialArea: o['area']?.toString(),
+        ),
+      ),
+    );
+    if (result == true) {
+      _snack('تم إنشاء الفاكس — جاري التحديث', AppColors.success);
+      await _load();
     }
   }
 
@@ -131,6 +152,18 @@ class _QState extends State<AdminFulfillmentQueueScreen> {
                             _load();
                           },
                           child: const Text('تكليف يدوي'))),
+                      ]),
+                      const SizedBox(height: 8),
+                      Row(children: [
+                        Expanded(child: ElevatedButton.icon(
+                          onPressed: _busy ? null : () => _createFaxForOrder(o),
+                          icon: const Icon(Icons.add_box, size: 18),
+                          label: const Text('إنشاء فاكس للطلب'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.info,
+                            foregroundColor: Colors.white,
+                          ),
+                        )),
                       ]),
                     ]),
                   ),

@@ -20,6 +20,8 @@ const staffRequestSchema = z.object({
   quantity: z.number().positive(),
   orderId: z.string().uuid().optional(),
   notes: z.string().max(500).optional(),
+  deliveryGovernorate: z.string().max(200).optional(),
+  deliveryArea: z.string().max(200).optional(),
 });
 
 const routeTransportSchema = z.object({

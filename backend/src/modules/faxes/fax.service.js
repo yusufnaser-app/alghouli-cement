@@ -335,17 +335,21 @@ const requestFaxByStaff = async (data, staffUserId) => {
        (order_id, driver_id, vehicle_id, factory_id, requested_quantity,
         status, requested_at, notes, created_by,
         requested_by_user_id, trader_id, driver_type_snapshot, is_managed_by_institution,
+   delivery_governorate, delivery_area,
         fax_number, approved_at, issued_at, approved_quantity)
        VALUES ($1,$2,$3,$4,$5,'ISSUED',NOW(),$6,$7,$8,$9,$10,$11,
-               $12, NOW(), NOW(), $5)
+        $12, NOW(), NOW(), $5,
+        $13, $14)
        RETURNING *`,
       [
-        data.orderId || null, driver.id, data.vehicleId, data.factoryId,
-        data.quantity, data.notes || null, staffUserId,
-        staffUserId, driver.owner_trader_id || null,
-        driver.driver_type, isManaged,
-        faxNumber,
-      ]
+          data.orderId || null, driver.id, data.vehicleId, data.factoryId,
+          data.quantity, data.notes || null, staffUserId,
+          staffUserId, driver.owner_trader_id || null,
+          driver.driver_type, isManaged,
+          faxNumber,
+          data.deliveryGovernorate || null,
+          data.deliveryArea || null,
+        ]
     );
 
     await client.query(

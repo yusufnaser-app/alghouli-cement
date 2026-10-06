@@ -3,7 +3,26 @@ import '../../../../core/constants/app_colors.dart';
 import '../../data/admin_service.dart';
 
 class AdminCreateFaxScreen extends StatefulWidget {
-  const AdminCreateFaxScreen({super.key});
+  /// معرّف طلب اختياري — يُملأ تلقائيًا عند الفتح من قائمة التكليف
+  final String? initialOrderId;
+  /// معرّف مصنع مبدئي
+  final String? initialFactoryId;
+  /// كمية مبدئية
+  final double? initialQuantity;
+  /// محافظة مبدئية (من الطلب)
+  final String? initialGovernorate;
+  /// منطقة مبدئية (من الطلب)
+  final String? initialArea;
+
+  const AdminCreateFaxScreen({
+    super.key,
+    this.initialOrderId,
+    this.initialFactoryId,
+    this.initialQuantity,
+    this.initialGovernorate,
+    this.initialArea,
+  });
+
   @override
   State<AdminCreateFaxScreen> createState() => _State();
 }
@@ -13,6 +32,8 @@ class _State extends State<AdminCreateFaxScreen> {
   final _qtyCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   final _orderCtrl = TextEditingController();
+  final _governorateCtrl = TextEditingController();
+  final _areaCtrl = TextEditingController();
 
   List<Map<String, dynamic>> _sources = [];
   List<Map<String, dynamic>> _drivers = [];
@@ -29,11 +50,22 @@ class _State extends State<AdminCreateFaxScreen> {
   @override
   void initState() {
     super.initState();
-    _loadLookups();
+    // ✅ ملء القيم المبدئية من الطلب
+    if (widget.initialOrderId != null) _orderCtrl.text = widget.initialOrderId!;
+    if (widget.initialQuantity != null) {
+      _qtyCtrl.text = widget.initialQuantity!.toStringAsFixed(0);
+    }
+    if (widget.initialGovernorate != null) {
+      _governorateCtrl.text = widget.initialGovernorate!;
+    }
+    if (widget.initialArea != null) _areaCtrl.text = widget.initialArea!;
+    _sourceId = widget.initialFactoryId;
   }
 
   @override
   void dispose() {
+    _governorateCtrl.dispose();
+    _areaCtrl.dispose();
     _qtyCtrl.dispose();
     _notesCtrl.dispose();
     _orderCtrl.dispose();
@@ -83,6 +115,8 @@ class _State extends State<AdminCreateFaxScreen> {
         quantity: qty,
         orderId: _orderCtrl.text.trim().isEmpty ? null : _orderCtrl.text.trim(),
         notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+        deliveryGovernorate: _governorateCtrl.text.trim().isEmpty ? null : _governorateCtrl.text.trim(),
+        deliveryArea: _areaCtrl.text.trim().isEmpty ? null : _areaCtrl.text.trim(),
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -176,7 +210,27 @@ class _State extends State<AdminCreateFaxScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  _lbl('ملاحظات'),
+                  _lbl('المحافظة (لمطابقة الطلبات تلقائيًا)'),
+              TextField(
+                controller: _governorateCtrl,
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.location_city),
+                  hintText: 'مثال: صنعاء',
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              _lbl('المنطقة'),
+              TextField(
+                controller: _areaCtrl,
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.place),
+                  hintText: 'مثال: بني الحارث',
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              _lbl('ملاحظات'),
                   TextField(
                     controller: _notesCtrl,
                     maxLines: 3,
