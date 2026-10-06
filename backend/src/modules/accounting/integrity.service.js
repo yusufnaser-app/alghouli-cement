@@ -18,7 +18,7 @@ const runIntegrityCheck = async ({ customerId = null } = {}) => {
     query(`SELECT f.order_id, f.status, f.loaded_quantity, f.transport_total, f.requested_quantity, f.transport_rate_unit
            FROM loading_faxes f ${customerId ? 'JOIN orders o ON o.id = f.order_id WHERE o.customer_id = $1' : ''}`, cp),
     query(`SELECT order_id, transaction_type, debit, credit, driver_id FROM driver_ledger WHERE order_id IS NOT NULL`),
-    query(`SELECT oi.order_id, oi.quantity, oi.unit_price, oi.discount FROM order_items oi
+    query(`SELECT oi.order_id, oi.quantity, oi.unit_price AS "unitPrice", oi.discount FROM order_items oi
            ${customerId ? 'JOIN orders o ON o.id = oi.order_id WHERE o.customer_id = $1' : ''}`, cp),
     query(`SELECT customer_id, currency, balance FROM customer_balances ${cw}`, cp),
   ]);
