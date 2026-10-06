@@ -3,6 +3,7 @@ const { pool, query } = require('../../config/db');
 const { toMinor } = require('../accounting/accounting.engine');
 const { sendPushNotification } = require('../../services/fcm.service');
 const { generateOrderNumber } = require('../../utils/number-generator');
+const { assertFaxDeliverable } = require('./delivery-gate');
 
 const listDestinations = async (faxId) => {
   const r = await query(`
@@ -269,21 +270,28 @@ const deliverDestination = async (destinationId, userId) => {
     await client.query('BEGIN');
 
     const d = await client.query(`
-      SELECT d.*, f.fax_number, f.driver_id, f.order_id AS fax_order_id, f.factory_id
+      SELECT d.*, f.fax_number, f.driver_id, f.order_id AS fax_order_id, f.factory_id,
+             f.status AS fax_status, f.is_managed_by_institution AS fax_is_managed
       FROM delivery_destinations d
       JOIN loading_faxes f ON f.id = d.fax_id
       WHERE d.id = $1
+      FOR UPDATE OF d, f
     `, [destinationId]);
 
     if (!d.rows.length) { const e = new Error('الوجهة غير موجودة'); e.status = 404; throw e; }
     const dest = d.rows[0];
 
-    if (dest.status === 'DELIVERED') { const e = new Error('تم التسليم مسبقًا'); e.status = 400; throw e; }
-
+    // الصلاحية أولًا (لا نكشف حالة فاكس غير المالك)، ثم حالة الوجهة، ثم بوابة حالة الفاكس.
+    // القفل FOR UPDATE OF d, f أعلاه: يمنع التسليم المزدوج للوجهة، ويُسلسل تسليم وجهتين
+    // لنفس الفاكس حتى يرى العدّ الأخير (PENDING) النتيجة الصحيحة.
     const drv = await client.query(`SELECT id FROM drivers WHERE user_id = $1`, [userId]);
     if (!drv.rows.length || drv.rows[0].id !== dest.driver_id) {
       const e = new Error('غير مصرح'); e.status = 403; throw e;
     }
+    if (dest.status === 'DELIVERED') throw httpError('تم التسليم مسبقًا', 400, 'DESTINATION_ALREADY_DELIVERED');
+    if (dest.status === 'CANCELLED') throw httpError('الوجهة ملغاة', 400, 'DESTINATION_CANCELLED');
+    if (dest.status !== 'PENDING') throw httpError(`حالة الوجهة لا تسمح بالتسليم: ${dest.status}`, 400, 'INVALID_DESTINATION_STATUS');
+    assertFaxDeliverable({ status: dest.fax_status, is_managed_by_institution: dest.fax_is_managed });
 
     let createdOrder = null;
 

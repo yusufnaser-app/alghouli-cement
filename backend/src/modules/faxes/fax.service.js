@@ -9,6 +9,7 @@ const fulfillmentService = require('../accounting/order-fulfillment.service');
 
 // توليد الرقم الموحَّد (قفل استشاري + MAX) — src/utils/number-generator.js
 const { generateFaxNumber } = require('../../utils/number-generator');
+const { assertFaxDeliverable, assertNoPendingDestinations } = require('./delivery-gate');
 
 // إنشاء فاكس انطلاقًا من طلب شراء معتمد. يستعمل نفس جدول loading_faxes
 // ولا ينشئ دورة مستقلة للطلب.
@@ -1307,7 +1308,8 @@ const driverMarkDelivered = async (faxId, userId) => {
       `SELECT f.*, o.id AS order_id, o.status AS order_status
        FROM loading_faxes f
        LEFT JOIN orders o ON o.id = f.order_id
-       WHERE f.id = $1`,
+       WHERE f.id = $1
+       FOR UPDATE OF f`,
       [faxId]
     );
     if (!f.rows.length) {
@@ -1321,6 +1323,10 @@ const driverMarkDelivered = async (faxId, userId) => {
     if (!d.rows.length || d.rows[0].id !== fax.driver_id) {
       const e = new Error('غير مصرح'); e.status = 403; throw e;
     }
+
+    // A2: بوابة الحالة + رفض الإغلاق مع وجهات معلّقة (قفل الفاكس أعلاه يمنع الإغلاق المزدوج)
+    assertFaxDeliverable(fax);
+    await assertNoPendingDestinations(client, faxId);
 
     await client.query(
       `UPDATE loading_faxes 
