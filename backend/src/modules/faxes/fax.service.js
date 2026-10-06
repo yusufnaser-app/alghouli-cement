@@ -10,12 +10,13 @@ const fulfillmentService = require('../accounting/order-fulfillment.service');
 const generateFaxNumber = async (client) => {
   const year = new Date().getFullYear();
   const r = await client.query(
-    `SELECT COUNT(*) FROM loading_faxes 
-     WHERE fax_number IS NOT NULL 
+    `SELECT COALESCE(MAX(CAST(SUBSTRING(fax_number FROM '[0-9]+$') AS INTEGER)), 0) AS max_num
+     FROM loading_faxes
+     WHERE fax_number IS NOT NULL
        AND fax_number LIKE $1`,
     [`FX-${year}-%`]
   );
-  const count = parseInt(r.rows[0].count, 10) + 1;
+  const count = (r.rows[0].max_num || 0) + 1;
   return `FX-${year}-${String(count).padStart(5, '0')}`;
 };
 
@@ -67,20 +68,21 @@ const createFaxFromOrder = async (client, orderId, createdByUserId) => {
         (v.rows[0].current_driver_id && v.rows[0].current_driver_id !== order.trader_driver_id)) {
       const err = new Error('السائق أو القاطرة لا يتبعان التاجر'); err.status = 403; throw err;
     }
-    const faxNumber = null; // يُصدر لاحقًا من الموظف/المصنع
+    const faxNumber = await generateFaxNumber(client); // ✅ توليد تلقائي فوري
     const f = await client.query(
       `INSERT INTO loading_faxes
        (order_id, driver_id, vehicle_id, factory_id, requested_quantity, status,
         requested_at, created_by, requested_by_user_id, trader_id,
         driver_type_snapshot, is_managed_by_institution,
-        transport_payer, transport_payer_trader_id)
-       VALUES ($1,$2,$3,$4,$5,'REQUESTED',NOW(),$6,$7,$8,$9,FALSE,$10,$11)
+        transport_payer, transport_payer_trader_id, fax_number)
+       VALUES ($1,$2,$3,$4,$5,'REQUESTED',NOW(),$6,$7,$8,$9,FALSE,$10,$11,$12)
        RETURNING id, fax_number, status`,
       [orderId, order.trader_driver_id, order.trader_vehicle_id, order.source_id,
        order.quantity, createdByUserId, order.customer_user_id, order.customer_id,
        d.rows[0].driver_type || 'trader_driver',
        order.transport_beneficiary === 'trader' ? 'trader' : 'institution',
-       order.transport_beneficiary === 'trader' ? order.customer_id : null]
+       order.transport_beneficiary === 'trader' ? order.customer_id : null,
+        faxNumber]
     );
     await client.query(`UPDATE orders SET fax_id = $1, status = CASE WHEN status = 'PAYMENT_APPROVED' THEN 'PREPARING' ELSE status END, updated_at = NOW() WHERE id = $2`, [f.rows[0].id, orderId]);
     await client.query(
@@ -223,18 +225,21 @@ const requestFax = async (requestedByUserId, data) => {
     }
 
     const isManaged = driverType !== 'trader_driver';
+    const faxNumber = await generateFaxNumber(client); // ✅ توليد تلقائي
 
     const fax = await client.query(
       `INSERT INTO loading_faxes
        (order_id, driver_id, vehicle_id, factory_id, requested_quantity,
         status, requested_at, notes, created_by,
-        requested_by_user_id, trader_id, driver_type_snapshot, is_managed_by_institution)
-       VALUES ($1,$2,$3,$4,$5,'REQUESTED',NOW(),$6,$7,$8,$9,$10,$11)
+        requested_by_user_id, trader_id, driver_type_snapshot, is_managed_by_institution,
+        fax_number)
+       VALUES ($1,$2,$3,$4,$5,'REQUESTED',NOW(),$6,$7,$8,$9,$10,$11,$12)
        RETURNING *`,
       [
         data.orderId || null, driverId, data.vehicleId, data.factoryId,
         data.quantity, data.notes || null, requestedByUserId,
         requestedByUserId, traderId, driverType, isManaged,
+        faxNumber,
       ]
     );
 
