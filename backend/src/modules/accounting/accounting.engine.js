@@ -457,7 +457,7 @@ const runIntegrityChecks = (d) => {
     postingByOrder.get(p.order_id).push(p);
   }
   for (const f of faxes) {
-    if (f.status === 'USED' && Number(f.loaded_quantity) > 0) {
+    if (f.status === 'USED' && Number(f.loaded_quantity) > 0 && f.order_id) { // ✅ تجاهل الفاكسات بدون طلب (مخزون مؤسسة)
       const posts = postingByOrder.get(f.order_id) || [];
       const o = orderById.get(f.order_id);
       if (!posts.length || (o && o.accounting_status !== 'POSTED' && o.accounting_status !== 'REVERSED')) {
