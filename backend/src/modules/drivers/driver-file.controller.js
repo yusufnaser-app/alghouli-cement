@@ -33,4 +33,11 @@ const getStats = asyncHandler(async (req, res) => {
   return response.success(res, s, 'إحصائيات السائقين');
 });
 
-module.exports = { getProfile, getTrips, getActivity, getTransfers, createTransfer, getStats };
+
+const updateProfile = asyncHandler(async (req, res) => {
+  const p = await service.updateDriverProfile(req.params.id, req.body, req.user.id);
+  if (!p) return response.error(res, 'السائق غير موجود', 404);
+  return response.success(res, p, 'تم تحديث ملف السائق');
+});
+
+module.exports = { getProfile, getTrips, getActivity, getTransfers, createTransfer, getStats, updateProfile };

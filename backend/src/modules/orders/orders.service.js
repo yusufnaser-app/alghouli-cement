@@ -240,18 +240,32 @@ const createOrder = async (userId, data) => {
       const unit = it.unit || pInfo.rows[0]?.unit || 'bag';
       const packagingType = it.packagingType || 'bagged';
 
+      // ✅ fallback: إذا لم يُرسل productId، استخدم default_product_id من المصنع
+      let productId = it.productId;
+      if (!productId && sourceId) {
+        const p = await client.query(
+          `SELECT default_product_id FROM product_sources WHERE id = $1`,
+          [sourceId]
+        );
+        productId = p.rows[0]?.default_product_id || null;
+      }
+
       await client.query(
         `INSERT INTO order_items
          (order_id, product_id, source_id, packaging_type, quantity, unit,
           unit_price, discount, line_total)
          VALUES ($1, $2, $3, $4, $5, $6, NULL, 0, NULL)`,
-        [order.id, it.productId, sourceId, packagingType, it.quantity, unit]
+        [order.id, productId, sourceId, packagingType, it.quantity, unit]
       );
-      await client.query(
-        `UPDATE inventory SET reserved_qty = reserved_qty + $1, updated_at = NOW()
-         WHERE product_id = $2`,
-        [it.quantity, it.productId]
-      );
+
+      // لا نُحدّث inventory إن لم يُعرف المنتج
+      if (productId) {
+        await client.query(
+          `UPDATE inventory SET reserved_qty = reserved_qty + $1, updated_at = NOW()
+           WHERE product_id = $2`,
+          [it.quantity, productId]
+        );
+      }
     }
 
     await client.query(

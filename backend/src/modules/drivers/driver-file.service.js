@@ -223,11 +223,64 @@ const getStats = async () => {
   return r.rows[0];
 };
 
-module.exports = {
-  getFullProfile,
+
+/**
+ * تحديث ملف السائق — الحقول المسموح تعديلها فقط.
+ * id_number يُعاد حساب الـ hash تلقائيًا إن تغيّر.
+ */
+const updateDriverProfile = async (driverId, data, userId) => {
+  const allowed = [
+    'full_name', 'phone', 'license_number', 'id_number',
+    'status', 'notes', 'driver_type', 'address',
+    'photo_url', 'license_expiry', 'national_id',
+  ];
+
+  const sets = [];
+  const params = [];
+
+  for (const key of allowed) {
+    if (data[key] !== undefined) {
+      params.push(data[key]);
+      sets.push(`${key} = $${params.length}`);
+    }
+  }
+
+  // id_number_hash يُعاد حسابه إن تغيّر id_number
+  if (data.id_number !== undefined) {
+    const crypto = require('crypto');
+    const hash = crypto.createHash('sha256')
+      .update(String(data.id_number || ''))
+      .digest('hex');
+    params.push(hash);
+    sets.push(`id_number_hash = $${params.length}`);
+  }
+
+  if (sets.length === 0) {
+    throw Object.assign(new Error('لا توجد حقول للتعديل'), { status: 400 });
+  }
+
+  // نُضيف updated_at تلقائيًا
+  sets.push('updated_at = NOW()');
+
+  params.push(driverId);
+
+  const sql = `
+    UPDATE drivers
+    SET ${sets.join(', ')}
+    WHERE id = $${params.length}
+    RETURNING id, user_id, full_name, phone, license_number,
+              id_number, status, notes, driver_type,
+              approval_status, address, photo_url, license_expiry,
+              national_id, created_at, updated_at
+  `;
+
+  const r = await query(sql, params);
+  return r.rows[0] || null;
+};
+
+module.exports = { getFullProfile,
   getTrips,
   getActivity,
   getTransfers,
   createTransfer,
-  getStats,
-};
+  getStats, updateDriverProfile };

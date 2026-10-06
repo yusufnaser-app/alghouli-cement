@@ -215,4 +215,67 @@ const createBulkFaxes = async (items, staffUserId) => {
   return results;
 };
 
-module.exports = { getSuggestions, createBulkFaxes };
+
+/**
+ * يُرجع مجموعات الفاكسات الجماعية — تجميع من loading_faxes بحسب:
+ * - نفس المصنع
+ * - نفس السائق
+ * - خلال نافذة زمنية (ساعة واحدة)
+ */
+const listBulkGroups = async (filters = {}) => {
+  const params = [];
+  const where = [];
+
+  if (filters.from) {
+    params.push(filters.from);
+    where.push(`f.created_at >= $${params.length}`);
+  }
+  if (filters.to) {
+    params.push(filters.to);
+    where.push(`f.created_at <= $${params.length}`);
+  }
+  if (filters.factoryId) {
+    params.push(filters.factoryId);
+    where.push(`f.factory_id = $${params.length}`);
+  }
+  if (filters.status) {
+    params.push(filters.status);
+    where.push(`f.status = $${params.length}`);
+  }
+
+  const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  const sql = `
+    SELECT
+      DATE_TRUNC('hour', f.created_at) AS group_hour,
+      f.factory_id,
+      s.name_ar AS factory_name,
+      f.driver_id,
+      u.full_name AS driver_name,
+      f.vehicle_id,
+      v.plate_number,
+      COUNT(*)::int AS fax_count,
+      SUM(f.requested_quantity) AS total_requested,
+      SUM(COALESCE(f.loaded_quantity, 0)) AS total_loaded,
+      ARRAY_AGG(f.id ORDER BY f.created_at) AS fax_ids,
+      ARRAY_AGG(f.fax_number ORDER BY f.created_at) AS fax_numbers,
+      ARRAY_AGG(DISTINCT f.status) AS statuses,
+      MIN(f.created_at) AS first_at,
+      MAX(f.created_at) AS last_at
+    FROM loading_faxes f
+    LEFT JOIN product_sources s ON s.id = f.factory_id
+    LEFT JOIN drivers d ON d.id = f.driver_id
+    LEFT JOIN users u ON u.id = d.user_id
+    LEFT JOIN vehicles v ON v.id = f.vehicle_id
+    ${whereClause}
+    GROUP BY group_hour, f.factory_id, s.name_ar, f.driver_id, u.full_name, f.vehicle_id, v.plate_number
+    HAVING COUNT(*) > 1
+    ORDER BY MAX(f.created_at) DESC
+    LIMIT 100
+  `;
+
+  const r = await query(sql, params);
+  return r.rows;
+};
+
+module.exports = { getSuggestions, createBulkFaxes, listBulkGroups };

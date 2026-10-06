@@ -11,5 +11,6 @@ router.get('/:id/trips', requireRoles('admin', 'transport', 'accountant'), contr
 router.get('/:id/activity', requireRoles('admin', 'transport', 'accountant'), controller.getActivity);
 router.get('/:id/transfers', requireRoles('admin', 'accountant'), controller.getTransfers);
 router.post('/:id/transfers', requireRoles('admin', 'accountant'), controller.createTransfer);
+router.put('/:id/profile', requireRoles('admin', 'transport'), controller.updateProfile);
 
 module.exports = router;
