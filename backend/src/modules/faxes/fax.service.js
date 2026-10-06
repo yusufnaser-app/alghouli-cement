@@ -1029,37 +1029,14 @@ const listAwaitingRoute = async () => {
   return r.rows;
 };
 
-const setRouteAndTransport = async (faxId, data, userId) => {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    const f = await client.query(
-      `SELECT f.*, d.id AS driver_id, d.driver_type, d.full_name AS driver_name,
-              COALESCE(d.phone, u.phone) AS driver_phone
-       FROM loading_faxes f
-       JOIN drivers d ON d.id = f.driver_id
-       LEFT JOIN users u ON u.id = d.user_id
-       WHERE f.id = $1
-       FOR UPDATE OF f`,
-      [faxId]
-    );
-
-    if (f.rows.length === 0) {
-      const err = new Error('الفاكس غير موجود');
-      err.status = 404;
-      throw err;
-    }
-
-    const fax = f.rows[0];
-
-    // منع إعادة تحديد خط السير/الأجرة لفاكس سبق تحديده (لمنع تكرار قيد المستحق في حساب السائق)
-    if (fax.transport_rate !== null && fax.transport_rate !== undefined) {
-      const err = new Error('تم تحديد خط السير وأجرة النقل لهذا الفاكس مسبقًا');
-      err.status = 400;
-      err.code = 'ALREADY_ROUTED';
-      throw err;
-    }
+/**
+ * يطبّق خط السير وأجرة النقل على فاكس مقفول داخل معاملة مفتوحة (لا BEGIN/COMMIT هنا).
+ * يتطلب أن يحمل `fax` صفّ الفاكس مع driver_type و driver_phone (كما في استعلام setRouteAndTransport).
+ * المتصل مسؤول عن: القفل، فحص ALREADY_ROUTED، COMMIT/ROLLBACK.
+ * ملاحظة: بقي تنسيق الجسم (إزاحة 4 مسافات) كما كان عمدًا ليظهر في الفرق أنه لم يُمسّ.
+ */
+const applyTransportAndRoute = async (client, fax, data, userId) => {
+  const faxId = fax.id;
 
     // قاعدة الحساب
     let baseQty = parseFloat(fax.loaded_quantity || fax.requested_quantity || 0);
@@ -1235,16 +1212,52 @@ const setRouteAndTransport = async (faxId, data, userId) => {
     }
 
 
+  return {
+    id: faxId,
+    route: data.route,
+    transport_total: total,
+    base_quantity: baseQty,
+    new_status: 'READY_FOR_TRANSIT',
+  };
+};
+
+const setRouteAndTransport = async (faxId, data, userId) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const f = await client.query(
+      `SELECT f.*, d.id AS driver_id, d.driver_type, d.full_name AS driver_name,
+              COALESCE(d.phone, u.phone) AS driver_phone
+       FROM loading_faxes f
+       JOIN drivers d ON d.id = f.driver_id
+       LEFT JOIN users u ON u.id = d.user_id
+       WHERE f.id = $1
+       FOR UPDATE OF f`,
+      [faxId]
+    );
+
+    if (f.rows.length === 0) {
+      const err = new Error('الفاكس غير موجود');
+      err.status = 404;
+      throw err;
+    }
+
+    const fax = f.rows[0];
+
+    // منع إعادة تحديد خط السير/الأجرة لفاكس سبق تحديده (لمنع تكرار قيد المستحق في حساب السائق)
+    if (fax.transport_rate !== null && fax.transport_rate !== undefined) {
+      const err = new Error('تم تحديد خط السير وأجرة النقل لهذا الفاكس مسبقًا');
+      err.status = 400;
+      err.code = 'ALREADY_ROUTED';
+      throw err;
+    }
+
+    const result = await applyTransportAndRoute(client, fax, data, userId);
 
     await client.query('COMMIT');
 
-    return {
-      id: faxId,
-      route: data.route,
-      transport_total: total,
-      base_quantity: baseQty,
-      new_status: 'READY_FOR_TRANSIT',
-    };
+    return result;
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -1255,6 +1268,7 @@ const setRouteAndTransport = async (faxId, data, userId) => {
 
 module.exports.listAwaitingRoute = listAwaitingRoute;
 module.exports.setRouteAndTransport = setRouteAndTransport;
+module.exports.applyTransportAndRoute = applyTransportAndRoute;
 
 const listFaxesForExport = async ({ status, from, to } = {}) => {
   const params = [];
