@@ -9,7 +9,8 @@ const fulfillmentService = require('../accounting/order-fulfillment.service');
 
 // توليد الرقم الموحَّد (قفل استشاري + MAX) — src/utils/number-generator.js
 const { generateFaxNumber } = require('../../utils/number-generator');
-const { assertFaxDeliverable, assertNoPendingDestinations } = require('./delivery-gate');
+const { assertFaxDeliverable, assertNoPendingDestinations, isInstitutionFax } = require('./delivery-gate');
+const { createOrderFax, blockFax } = require('./order-fax');
 
 // إنشاء فاكس انطلاقًا من طلب شراء معتمد. يستعمل نفس جدول loading_faxes
 // ولا ينشئ دورة مستقلة للطلب.
@@ -23,7 +24,8 @@ const createFaxFromOrder = async (client, orderId, createdByUserId) => {
      JOIN order_items oi ON oi.order_id = o.id
      LEFT JOIN drivers d ON d.id = o.trader_driver_id
      WHERE o.id = $1
-     ORDER BY oi.id ASC LIMIT 1`,
+     ORDER BY oi.id ASC LIMIT 1
+     FOR UPDATE OF o`,
     [orderId]
   );
   if (!o.rows.length) {
@@ -44,8 +46,10 @@ const createFaxFromOrder = async (client, orderId, createdByUserId) => {
 
   if (order.delivery_type === 'trader_pickup') {
     if (!order.trader_driver_id || !order.trader_vehicle_id) {
-      const err = new Error('لا يمكن إنشاء الفاكس قبل تحديد سائق وقاطرة التاجر');
-      err.code = 'FAX_NOT_READY'; err.status = 409; throw err;
+      // شبه مستحيل (الإنشاء يرفض fax_requested بلا سائق/قاطرة) — لكنه صريح ومسجَّل لا صامت
+      await blockFax(client, orderId, 'fax.blocked_missing_driver', 'MISSING_DRIVER_OR_VEHICLE',
+        'لا يمكن إنشاء الفاكس قبل تحديد سائق وقاطرة التاجر',
+        { driver_id: order.trader_driver_id || null, vehicle_id: order.trader_vehicle_id || null });
     }
     const d = await client.query(
       `SELECT id, driver_type, owner_trader_id FROM drivers WHERE id = $1`,
@@ -59,35 +63,12 @@ const createFaxFromOrder = async (client, orderId, createdByUserId) => {
         (v.rows[0].current_driver_id && v.rows[0].current_driver_id !== order.trader_driver_id)) {
       const err = new Error('السائق أو القاطرة لا يتبعان التاجر'); err.status = 403; throw err;
     }
-    const faxNumber = await generateFaxNumber(client); // ✅ توليد تلقائي فوري
-    const f = await client.query(
-      `INSERT INTO loading_faxes
-       (order_id, driver_id, vehicle_id, factory_id, requested_quantity, status,
-        requested_at, created_by, requested_by_user_id, trader_id,
-        driver_type_snapshot, is_managed_by_institution,
-        transport_payer, transport_payer_trader_id, fax_number)
-       VALUES ($1,$2,$3,$4,$5,'REQUESTED',NOW(),$6,$7,$8,$9,FALSE,$10,$11,$12)
-       RETURNING id, fax_number, status`,
-      [orderId, order.trader_driver_id, order.trader_vehicle_id, order.source_id,
-       order.quantity, createdByUserId, order.customer_user_id, order.customer_id,
-       d.rows[0].driver_type || 'trader_driver',
-       order.transport_beneficiary === 'trader' ? 'trader' : 'institution',
-       order.transport_beneficiary === 'trader' ? order.customer_id : null,
-        faxNumber]
-    );
-    await client.query(`UPDATE orders SET fax_id = $1, status = CASE WHEN status = 'PAYMENT_APPROVED' THEN 'PREPARING' ELSE status END, updated_at = NOW() WHERE id = $2`, [f.rows[0].id, orderId]);
-    await client.query(
-      `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
-       SELECT $1, 'PAYMENT_APPROVED', 'PREPARING', $2, 'تم إنشاء طلب الفاكس تلقائيًا من الطلب المعتمد'
-       WHERE EXISTS (SELECT 1 FROM orders WHERE id = $1 AND status = 'PREPARING')`,
-      [orderId, createdByUserId]
-    );
-    await client.query(
-      `INSERT INTO automation_events (event_type, entity_type, entity_id, payload)
-       VALUES ('fax.created_from_order', 'orders', $1, $2)`,
-      [orderId, JSON.stringify({ fax_id: f.rows[0].id, driver_id: order.trader_driver_id, vehicle_id: order.trader_vehicle_id })]
-    );
-    return f.rows[0];
+    // B: إنشاء موحَّد — ISSUED + وجهة واحدة (عنوان التاجر) + ربط الطلب (m37 يضمن فاكسًا نشطًا واحدًا)
+    const { fax } = await createOrderFax(client, {
+      orderId, driverId: order.trader_driver_id, vehicleId: order.trader_vehicle_id,
+      createdBy: createdByUserId, managed: false, advanceOrder: true,
+    });
+    return fax;
   }
 
   // توصيل المؤسسة: الفاكس لا يُنشأ إلا بعد أن يعيّن الموظف السائق والقاطرة.
@@ -1326,6 +1307,16 @@ const driverMarkDelivered = async (faxId, userId) => {
 
     // A2: بوابة الحالة + رفض الإغلاق مع وجهات معلّقة (قفل الفاكس أعلاه يمنع الإغلاق المزدوج)
     assertFaxDeliverable(fax);
+    // B: فاكس التاجر وجهته الوحيدة هي طلبه نفسه — زر "تأكيد التسليم" القديم يُغلقها تلقائيًا
+    // (وجهات أخرى معلّقة تبقى تُرفض أدناه).
+    if (!isInstitutionFax(fax) && fax.order_id) {
+      await client.query(
+        `UPDATE delivery_destinations
+         SET status = 'DELIVERED', delivered_at = NOW(), delivered_by = $2, updated_at = NOW()
+         WHERE fax_id = $1 AND status = 'PENDING' AND fulfills_order_id = $3`,
+        [faxId, userId, fax.order_id]
+      );
+    }
     await assertNoPendingDestinations(client, faxId);
 
     await client.query(

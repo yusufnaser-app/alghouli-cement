@@ -298,7 +298,7 @@ const deliverDestination = async (destinationId, userId) => {
     // وجهة مرتبطة بطلب موجود ومدفوع: لا ننشئ طلبًا جديدًا (منع ازدواج الفوترة)
     if (dest.fulfills_order_id) {
       await client.query(`UPDATE orders SET status = 'DELIVERED', updated_at = NOW()
-                          WHERE id = $1 AND status IN ('PREPARING','IN_TRANSIT','PAYMENT_APPROVED')`, [dest.fulfills_order_id]);
+                          WHERE id = $1 AND status IN ('PREPARING','LOADED','IN_TRANSIT','PAYMENT_APPROVED')`, [dest.fulfills_order_id]);
       await client.query(`INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
                           VALUES ($1, NULL, 'DELIVERED', $2, $3)`,
         [dest.fulfills_order_id, userId, `تسليم الوجهة من فاكس ${dest.fax_number || ''}`]);

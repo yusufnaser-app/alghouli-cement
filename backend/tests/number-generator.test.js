@@ -184,13 +184,14 @@ test('14) حارس انحدار: لا مولّدات محلية ولا COUNT ل�
   }
 });
 
-test('15) deliveries.assign: عدد أعمدة INSERT الفاكس = عدد VALUES وفيه fax_number', () => {
-  const s = fs.readFileSync(path.join(__dirname, '../src/modules/deliveries/deliveries.service.js'), 'utf8');
+test('15) deliveries.assign (بعد B): الفاكس يُنشأ عبر order-fax.js — أعمدة INSERT = VALUES وfax_number مرتبط بقيمته', () => {
+  const svc = fs.readFileSync(path.join(__dirname, '../src/modules/deliveries/deliveries.service.js'), 'utf8');
+  assert.ok(/createOrderFax\(client,/.test(svc) && !/INSERT INTO loading_faxes/.test(svc));
+  const s = fs.readFileSync(path.join(__dirname, '../src/modules/faxes/order-fax.js'), 'utf8');
   const m = s.match(/INSERT INTO loading_faxes\s*\(([\s\S]*?)\)\s*VALUES \(([\s\S]*?)\)\s*RETURNING id/);
   assert.ok(m, 'لم يوجد INSERT');
   const cols = m[1].split(',').map((x) => x.trim()).filter(Boolean);
-  const vals = m[2].split(',').map((x) => x.trim()).filter(Boolean);
+  const vals = m[2].replace(/NOW\(\)/g, 'NOW').split(',').map((x) => x.trim()).filter(Boolean);
   assert.strictEqual(cols.length, vals.length);
-  assert.strictEqual(cols.at(-1), 'fax_number');
-  assert.strictEqual(vals.at(-1), '$12');
+  assert.strictEqual(vals[cols.indexOf('fax_number')], '$13');
 });

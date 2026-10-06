@@ -1,6 +1,7 @@
 const { pool, query } = require('../../config/db');
 
-const { generateTripNumber, generateFaxNumber } = require('../../utils/number-generator');
+const { generateTripNumber } = require('../../utils/number-generator');
+const { createOrderFax } = require('../faxes/order-fax');
 
 const assignDriver = async (orderId, data, assignedBy) => {
   const client = await pool.connect();
@@ -89,39 +90,19 @@ const assignDriver = async (orderId, data, assignedBy) => {
     // إذا طلب التاجر الفاكس مع توصيل مؤسسة الغولي، يتم إنشاؤه تلقائيًا
     // بعد تعيين السائق والقاطرة؛ الموظف لا يعيد إدخال بيانات الطلب يدويًا.
     const faxOrder = await client.query(
-      `SELECT o.fax_requested, o.fax_id, o.customer_id, o.transport_beneficiary,
-              oi.quantity, oi.source_id, d.driver_type
-       FROM orders o
-       JOIN order_items oi ON oi.order_id = o.id
-       JOIN drivers d ON d.id = $2
-       WHERE o.id = $1
-       ORDER BY oi.id ASC LIMIT 1`,
-      [orderId, data.driverId]
+      `SELECT fax_requested, fax_id FROM orders WHERE id = $1`, [orderId]
     );
     if (faxOrder.rows[0]?.fax_requested && !faxOrder.rows[0]?.fax_id) {
-      const f = faxOrder.rows[0];
       const existingFax = await client.query(
         `SELECT id FROM loading_faxes WHERE order_id = $1 AND status IN ('REQUESTED','APPROVED','ISSUED','USED','READY_FOR_TRANSIT') LIMIT 1`,
         [orderId]
       );
       if (!existingFax.rows.length) {
-        const fax = await client.query(
-          `INSERT INTO loading_faxes
-           (order_id, driver_id, vehicle_id, factory_id, requested_quantity, status,
-            requested_at, created_by, requested_by_user_id, trader_id, driver_type_snapshot,
-            is_managed_by_institution, transport_payer, transport_payer_trader_id, fax_number)
-           VALUES ($1,$2,$3,$4,$5,'REQUESTED',NOW(),$6,$7,$8,$9,TRUE,$10,$11,$12)
-           RETURNING id`,
-          [orderId, data.driverId, data.vehicleId,
-           (await client.query(`SELECT source_id FROM order_items WHERE order_id = $1 ORDER BY id ASC LIMIT 1`, [orderId])).rows[0].source_id,
-           f.quantity, assignedBy,
-           (await client.query(`SELECT user_id FROM customers WHERE id = $1`, [f.customer_id])).rows[0].user_id,
-           f.customer_id, f.driver_type || 'institution_driver',
-           f.transport_beneficiary === 'trader' ? 'trader' : 'institution',
-           f.transport_beneficiary === 'trader' ? f.customer_id : null,
-           await generateFaxNumber(client)]
-        );
-        await client.query(`UPDATE orders SET fax_id = $1 WHERE id = $2`, [fax.rows[0].id, orderId]);
+        // B: نفس الدالة الموحَّدة لفاكس التاجر — ISSUED + وجهة واحدة. حالة الطلب هنا DRIVER_ASSIGNED (أُعيّنت أعلاه).
+        await createOrderFax(client, {
+          orderId, driverId: data.driverId, vehicleId: data.vehicleId,
+          createdBy: assignedBy, managed: true, advanceOrder: false,
+        });
       }
     }
 
