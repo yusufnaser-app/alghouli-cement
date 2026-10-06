@@ -694,6 +694,40 @@ const listPendingRouteAndPrice = async () => {
  *     صادرة/مُحمَّلة لكن بلا خط سير أو أجرة نقل بعد
  *   - طبيعي: رحلات جارية بشكل طبيعي (تم تحديد خط السير والأجرة، في الطريق)
  */
+/**
+ * تصنيف مزدوج (مؤسسة / تاجر) لمركز العمليات — دالة نقية بلا اعتماد على قاعدة البيانات.
+ * يُحدَّد النوع من driver_type_snapshot ('trader_driver' → تاجر، وما عداه → مؤسسة).
+ * rows: فاكسات نشطة + المنتهية خلال 24 ساعة، ويحمل كل صف destinations_count و is_recent.
+ */
+const classifyOperations = (rows) => {
+  const inst = { pending_approval: [], approved_pending_factory: [], at_factory: [],
+    loaded_pending_destinations: [], in_transit: [], completed_recent: [], cancelled_recent: [] };
+  const trader = { pending_approval: [], ready_for_factory: [], at_factory: [],
+    loaded_in_transit: [], completed_recent: [], cancelled_recent: [] };
+
+  for (const f of rows) {
+    const isTrader = f.fleet_type === 'trader_driver';
+    const b = isTrader ? trader : inst;
+    const dests = Number(f.destinations_count || 0);
+    const atFactory = f.factory_entered_at && !f.used_at;
+
+    if (f.status === 'DELIVERED') { if (f.is_recent) b.completed_recent.push(f); }
+    else if (f.status === 'CANCELLED') { if (f.is_recent) b.cancelled_recent.push(f); }
+    else if (f.status === 'REQUESTED') b.pending_approval.push(f);
+    else if (atFactory) b.at_factory.push(f);
+    else if (f.status === 'APPROVED' || f.status === 'ISSUED') {
+      (isTrader ? trader.ready_for_factory : inst.approved_pending_factory).push(f);
+    } else if (f.status === 'USED') {
+      if (isTrader) trader.loaded_in_transit.push(f);
+      else if (dests === 0) inst.loaded_pending_destinations.push(f);
+      else inst.in_transit.push(f);
+    } else if (f.status === 'READY_FOR_TRANSIT') {
+      (isTrader ? trader.loaded_in_transit : inst.in_transit).push(f);
+    }
+  }
+  return { institution: inst, trader };
+};
+
 const getOperationsCenter = async (delayThresholdMinutes = 60) => {
   const commonSelect = `
     SELECT f.*, d.full_name AS driver_name, d.phone AS driver_phone,
@@ -750,16 +784,43 @@ const getOperationsCenter = async (delayThresholdMinutes = 60) => {
      LIMIT 100`
   );
 
+  // 5) التصنيف الجديد (مؤسسة/تاجر) + قائمة مسطّحة — إضافي فقط، لا يغيّر القوائم الثلاث أعلاه
+  const allRes = await query(
+    `SELECT f.*, d.full_name AS driver_name, d.phone AS driver_phone,
+            v.plate_number, s.name_ar AS factory_name,
+            COALESCE(f.driver_type_snapshot, d.driver_type, 'institution_driver') AS fleet_type,
+            (SELECT COUNT(*)::int FROM delivery_destinations x WHERE x.fax_id = f.id) AS destinations_count,
+            (f.status IN ('DELIVERED','CANCELLED')) AS is_recent
+     FROM loading_faxes f
+     LEFT JOIN drivers d ON d.id = f.driver_id
+     LEFT JOIN vehicles v ON v.id = f.vehicle_id
+     LEFT JOIN product_sources s ON s.id = f.factory_id
+     WHERE f.status NOT IN ('DELIVERED','CANCELLED')
+        OR (f.status = 'DELIVERED' AND f.updated_at > NOW() - INTERVAL '24 hours')
+        OR (f.status = 'CANCELLED' AND COALESCE(f.cancelled_at, f.updated_at) > NOW() - INTERVAL '24 hours')
+     ORDER BY COALESCE(f.updated_at, f.requested_at) DESC
+     LIMIT 1000`
+  );
+  const { institution, trader } = classifyOperations(allRes.rows);
+
+  const summary = {
+    urgent_count: urgentRows.length,
+    needs_follow_up_count: needsFollowUp.length,
+    normal_count: normal.rows.length,
+    delay_threshold_minutes: delayThresholdMinutes,
+    all_count: allRes.rows.length,
+  };
+  for (const [k, list] of Object.entries(institution)) summary[`institution_${k}`] = list.length;
+  for (const [k, list] of Object.entries(trader)) summary[`trader_${k}`] = list.length;
+
   return {
     urgent: urgentRows,
     needs_follow_up: needsFollowUp,
     normal: normal.rows,
-    summary: {
-      urgent_count: urgentRows.length,
-      needs_follow_up_count: needsFollowUp.length,
-      normal_count: normal.rows.length,
-      delay_threshold_minutes: delayThresholdMinutes,
-    },
+    all: allRes.rows,
+    institution,
+    trader,
+    summary,
   };
 };
 
@@ -772,6 +833,7 @@ module.exports.getFaxById = getFaxById;
 module.exports.cancelFax = cancelFax;
 module.exports.listPendingRouteAndPrice = listPendingRouteAndPrice;
 module.exports.getOperationsCenter = getOperationsCenter;
+module.exports.classifyOperations = classifyOperations;
 
 
 
