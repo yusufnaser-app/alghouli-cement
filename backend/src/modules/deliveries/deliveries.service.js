@@ -101,7 +101,7 @@ const assignDriver = async (orderId, data, assignedBy) => {
     if (faxOrder.rows[0]?.fax_requested && !faxOrder.rows[0]?.fax_id) {
       const f = faxOrder.rows[0];
       const existingFax = await client.query(
-        `SELECT id FROM loading_faxes WHERE order_id = $1 AND status IN ('REQUESTED','APPROVED','ISSUED','USED') LIMIT 1`,
+        `SELECT id FROM loading_faxes WHERE order_id = $1 AND status IN ('REQUESTED','APPROVED','ISSUED','USED','READY_FOR_TRANSIT') LIMIT 1`,
         [orderId]
       );
       if (!existingFax.rows.length) {

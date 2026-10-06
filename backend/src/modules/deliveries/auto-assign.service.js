@@ -1,9 +1,6 @@
 const { pool } = require('../../config/db');
 const { toMinor } = require('../accounting/accounting.engine');
-const { capacitySql, usedBagsSql, bagsH } = require('./trip-capacity');
-
-// الحالات التي تقبل وجهات جديدة (DELIVERED/CANCELLED وأي حالة أخرى مستبعدة بحكم القائمة)
-const ELIGIBLE_STATUSES = ['REQUESTED', 'APPROVED', 'ISSUED', 'USED', 'READY_FOR_TRANSIT'];
+const { capacitySql, usedBagsSql, bagsH, eligibleStatusesSql } = require('./trip-capacity');
 
 const norm = (v) => String(v || '').trim();
 
@@ -88,7 +85,7 @@ const autoAssignToTrip = async (orderId, userId) => {
                      WHERE dg.fax_id = f.id AND dg.status <> 'CANCELLED'
                        AND TRIM(dg.governorate) = $2) AS has_dest_in_gov
       FROM loading_faxes f
-      WHERE f.status IN (${ELIGIBLE_STATUSES.map((x) => `'${x}'`).join(',')})
+      WHERE f.status IN (${eligibleStatusesSql()})
         AND f.factory_id = $1
         AND COALESCE(f.is_managed_by_institution, TRUE) = TRUE
       ORDER BY f.requested_at ASC

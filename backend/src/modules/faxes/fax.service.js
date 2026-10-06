@@ -34,7 +34,7 @@ const createFaxFromOrder = async (client, orderId, createdByUserId) => {
 
   const existing = await client.query(
     `SELECT id, fax_number, status FROM loading_faxes WHERE order_id = $1
-       AND status IN ('REQUESTED','APPROVED','ISSUED','USED') LIMIT 1`,
+       AND status IN ('REQUESTED','APPROVED','ISSUED','USED','READY_FOR_TRANSIT') LIMIT 1`,
     [orderId]
   );
   if (existing.rows.length) {

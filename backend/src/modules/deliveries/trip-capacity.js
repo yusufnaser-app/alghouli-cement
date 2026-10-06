@@ -4,6 +4,10 @@ const { toMinor } = require('../accounting/accounting.engine');
 // الكيس = 50 كغ، الطن = 20 كيسًا — مصدر واحد للصيغة (auto-assign و available-trips)
 const BAGS_PER_TON = 20;
 
+/** حالات الفاكس التي تقبل وجهات جديدة — مصدر واحد لـ auto-assign و available-trips. */
+const ELIGIBLE_STATUSES = ['REQUESTED', 'APPROVED', 'ISSUED', 'USED', 'READY_FOR_TRANSIT'];
+const eligibleStatusesSql = () => ELIGIBLE_STATUSES.map((x) => `'${x}'`).join(',');
+
 /** سعة الفاكس بالأكياس: المحمَّل ثم المعتمد ثم المطلوب. */
 const capacitySql = (a = 'f') =>
   `COALESCE(${a}.loaded_quantity, ${a}.approved_quantity, ${a}.requested_quantity, 0)`;
@@ -17,4 +21,4 @@ const usedBagsSql = (a = 'f') =>
 /** كمية بالأكياس × 100 (عدد صحيح، بلا أخطاء عائمة). */
 const bagsH = (qty, unit) => toMinor(qty) * (unit === 'ton' ? BAGS_PER_TON : 1);
 
-module.exports = { BAGS_PER_TON, capacitySql, usedBagsSql, bagsH };
+module.exports = { BAGS_PER_TON, ELIGIBLE_STATUSES, eligibleStatusesSql, capacitySql, usedBagsSql, bagsH };
