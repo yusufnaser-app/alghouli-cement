@@ -409,9 +409,18 @@ extension AdminServiceDestinations on AdminService {
     }
   }
 
-  Future<void> saveDestinations(String faxId, List<Map<String, dynamic>> destinations) async {
+  /// [transport] اختياري: transportRate / transportRateUnit / transportBaseOn /
+  /// transportPayer / transportPayerTraderId / transportPayerNote (يتطلب فاكسًا USED).
+  Future<void> saveDestinations(
+    String faxId,
+    List<Map<String, dynamic>> destinations, {
+    Map<String, dynamic>? transport,
+  }) async {
     try {
-      await _api.put('/faxes/$faxId/destinations', data: {'destinations': destinations});
+      await _api.put('/faxes/$faxId/destinations', data: {
+        'destinations': destinations,
+        if (transport != null) ...transport,
+      });
     } on DioException catch (e) {
       throw Exception(handleApiError(e));
     }

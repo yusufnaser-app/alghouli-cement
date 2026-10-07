@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import '../constants/app_config.dart';
 import '../storage/local_storage.dart';
+import 'fax_error_messages.dart';
 
 class ApiClient {
   static final ApiClient _instance = ApiClient._internal();
@@ -137,6 +138,11 @@ String handleApiError(dynamic error) {
             .join('\n');
         return '$mainMsg\n$details';
       }
+
+      // رموز الفاكسات/الوجهات المعروفة → رسالة واضحة (وإلا نص الخادم)
+      final code = data['code']?.toString();
+      final friendly = code == null ? null : friendlyFaxMessage(code, mainMsg);
+      if (friendly != null) return friendly;
 
       if (mainMsg != null) return mainMsg;
     }

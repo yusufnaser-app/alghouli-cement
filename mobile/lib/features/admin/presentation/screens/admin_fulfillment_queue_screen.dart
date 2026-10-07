@@ -18,14 +18,19 @@ class _QState extends State<AdminFulfillmentQueueScreen> {
   List<Map<String, dynamic>> _trips = [];
   bool _loading = true, _busy = false;
   String? _error;
+  final _govCtrl = TextEditingController();
+  String _gov = '';
 
   @override
   void initState() { super.initState(); _load(); }
 
+  @override
+  void dispose() { _govCtrl.dispose(); super.dispose(); }
+
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
     try {
-      final r = await Future.wait([_service.deliveriesPendingAssignment(), _service.availableTrips()]);
+      final r = await Future.wait([_service.deliveriesPendingAssignment(), _service.availableTrips(governorate: _gov.isEmpty ? null : _gov)]);
       if (mounted) setState(() { _orders = r[0]; _trips = r[1]; _loading = false; });
     } catch (e) {
       if (mounted) setState(() { _error = e.toString().replaceFirst('Exception: ', ''); _loading = false; });
@@ -176,30 +181,85 @@ class _QState extends State<AdminFulfillmentQueueScreen> {
     );
   }
 
+  Color _scoreColor(num score) {
+    if (score >= 100) return AppColors.success;
+    if (score >= 90) return AppColors.info;
+    if (score >= 80) return AppColors.accent;
+    return AppColors.warning;
+  }
+
   Widget _tripsTab() {
-    return AdminAsyncView(
-      loading: _loading, error: _error, isEmpty: _trips.isEmpty,
-      emptyText: 'لا توجد رحلات نشطة', onRetry: _load,
-      builder: () => RefreshIndicator(
-        onRefresh: _load,
-        child: ListView.builder(
-          padding: const EdgeInsets.all(12),
-          itemCount: _trips.length,
-          itemBuilder: (_, i) {
-            final t = _trips[i];
-            return Card(
-              child: ListTile(
-                title: Text('فاكس ${t['fax_number'] ?? 'بانتظار الإصدار'} • ${t['driver_name'] ?? '—'}',
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text('${t['factory_name'] ?? ''} — ${t['plate_number'] ?? ''}\n'
-                    '${t['delivery_governorate'] ?? ''}  |  المتبقي: ${t['remaining'] ?? 0} من ${t['capacity'] ?? 0}'
-                    '  |  وجهات: ${t['destinations_count'] ?? 0}'),
-                isThreeLine: true,
-              ),
-            );
-          },
+    return Column(children: [
+      // المحافظة تُفعّل الترتيب بالملاءمة (match_score) كما يفعل التكليف التلقائي
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+        child: TextField(
+          controller: _govCtrl,
+          textInputAction: TextInputAction.search,
+          onSubmitted: (v) { _gov = v.trim(); _load(); },
+          decoration: InputDecoration(
+            hintText: 'المحافظة — لترتيب الرحلات حسب الملاءمة',
+            prefixIcon: const Icon(Icons.place_outlined),
+            suffixIcon: _gov.isEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.search),
+                    onPressed: () { _gov = _govCtrl.text.trim(); _load(); })
+                : IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () { _govCtrl.clear(); _gov = ''; _load(); }),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
         ),
       ),
-    );
+      Expanded(
+        child: AdminAsyncView(
+          loading: _loading, error: _error, isEmpty: _trips.isEmpty,
+          emptyText: 'لا توجد رحلات نشطة', onRetry: _load,
+          builder: () => RefreshIndicator(
+            onRefresh: _load,
+            child: ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: _trips.length,
+              itemBuilder: (_, i) {
+                final t = _trips[i];
+                final score = num.tryParse((t['match_score'] ?? '').toString());
+                final reason = (t['match_reason'] ?? '').toString();
+                return Card(
+                  child: ListTile(
+                    title: Text('فاكس ${t['fax_number'] ?? 'بانتظار الإصدار'} • ${t['driver_name'] ?? '—'}',
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text('${t['factory_name'] ?? ''} — ${t['plate_number'] ?? ''}\n'
+                        '${t['delivery_governorate'] ?? ''}  |  المتبقي: ${t['remaining'] ?? 0} من ${t['capacity'] ?? 0}'
+                        '  |  وجهات: ${t['destinations_count'] ?? 0}'
+                        '${reason.isEmpty ? '' : '\n$reason'}'),
+                    isThreeLine: true,
+                    trailing: score == null
+                        ? null
+                        : Column(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: _scoreColor(score),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text('$score',
+                                    style: const TextStyle(
+                                        color: Colors.white, fontWeight: FontWeight.bold)),
+                              ),
+                              const SizedBox(height: 2),
+                              const Text('ملاءمة', style: TextStyle(fontSize: 10)),
+                            ],
+                          ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    ]);
   }
 }
