@@ -5,7 +5,7 @@ const { install, clearModules } = require('./helpers');
 const makeClient = (rulesRows, usageRows) => ({
   query: async (sql) => {
     if (/FROM order_ceilings WHERE is_active/.test(sql)) return { rows: rulesRows };
-    if (/SUM\(oi\.quantity\)/.test(sql)) return { rows: [usageRows.shift() || { bags: 0, amount: 0 }] };
+    if (/SUM\(oi\.quantity/.test(sql)) return { rows: [usageRows.shift() || { bags: 0, amount: 0 }] };
     return { rows: [] };
   },
 });

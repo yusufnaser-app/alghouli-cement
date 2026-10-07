@@ -25,6 +25,7 @@ router.patch('/admin/:id/suspend', requireRoles('admin'), adminController.suspen
 router.get('/', requirePermission('transport.view', 'ledger.view'), controller.list);
 router.get('/:driverId/ledger', requirePermission('ledger.view'), controller.getLedger);
 router.get('/:driverId/summary', requirePermission('ledger.view'), controller.getSummary);
+router.post('/:driverId/opening-balance', requirePermission('ledger.create'), controller.setOpeningBalance);
 router.post('/:driverId/payments', requirePermission('ledger.create'), controller.recordPayment);
 router.post('/:driverId/advances', requirePermission('ledger.create'), controller.recordAdvance);
 router.post('/:driverId/deductions', requirePermission('ledger.create'), controller.recordDeduction);

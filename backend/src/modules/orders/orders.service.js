@@ -163,31 +163,19 @@ const createOrder = async (userId, data) => {
       });
     }
 
-    // فحص سقوف الكمية (بند 28) — يعتمد على الكمية فقط لأن السعر غير معروف بعد.
-    // سقوف القيمة (بالريال) تُفحص لاحقًا عند التسعير في setOrderPricing.
-    try {
-      const bySource = {};
-      for (const it of items) {
-        const s = (bySource[it.sourceId] ||= { bags: 0 });
-        if (it.unit === 'bag') s.bags += it.quantity;
-      }
-      for (const [sourceId, agg] of Object.entries(bySource)) {
-        const check = await ceilingsService.checkOrderCeilings(client, {
-          customerId, sourceId, categoryId: null,
-          requestedBags: agg.bags, requestedAmount: 0,
-        });
-        if (check.exceeded) {
-          const err = new Error('تم تجاوز السقف المسموح به لهذا الطلب. يمكنك إرسال طلب موافقة استثنائية.');
-          err.status = 400;
-          err.code = 'CEILING_EXCEEDED';
-          err.data = check.results.filter((r) => r.exceeded);
-          throw err;
-        }
-      }
-    } catch (ceilErr) {
-      if (ceilErr.code === 'CEILING_EXCEEDED') throw ceilErr;
-      console.error('تحذير: تعذّر فحص سقوف الطلبات (تم تجاوز الفحص):', ceilErr.message);
+    // فحص السقوف (كمية / عدد طلبات / عدد قاطرات) — إلزامي، وفشل الفحص نفسه ⇒ رفض (لا ابتلاع).
+    // السعر غير معروف بعد، فسقوف القيمة تُفحص عند التسعير. الطن = 20 كيسًا.
+    const bySource = {};
+    for (const it of items) {
+      const sc = (bySource[it.sourceId] ||= { bags: 0 });
+      sc.bags += it.quantity * (it.unit === 'ton' ? 20 : 1);
     }
+    const ceilingCheck = await ceilingsService.enforceOrderCeilings(client, {
+      customerId,
+      entries: Object.entries(bySource).map(([sourceId, agg]) => ({ sourceId, requestedBags: agg.bags, requestedAmount: 0 })),
+      requestedOrders: 1,
+      requestedVehicleIds: [data.traderVehicleId || data.traderTruckPlate].filter(Boolean),
+    });
 
     const initialStatus = 'PENDING_PRICING';
     const orderNumber = await generateOrderNumber(client);
@@ -267,10 +255,14 @@ const createOrder = async (userId, data) => {
       [order.id, initialStatus, userId]
     );
 
+    // استثناء معتمد؟ يُستهلك مرة واحدة داخل نفس المعاملة
+    await ceilingsService.consumeOverrides(client, ceilingCheck.overrideIds, order.id, userId);
+
     await client.query('COMMIT');
-    return { ...order, delivery_type: data.deliveryType, fax_requested: !!data.faxRequested, transport_beneficiary: data.transportBeneficiary || null };
+    return { ...order, ceiling_status: ceilingCheck.status, delivery_type: data.deliveryType, fax_requested: !!data.faxRequested, transport_beneficiary: data.transportBeneficiary || null };
   } catch (err) {
     await client.query('ROLLBACK');
+    await ceilingsService.runAfterRollback(err); // طلب الاستثناء التلقائي يُكتب بعد التراجع
     throw err;
   } finally {
     client.release();
@@ -343,7 +335,7 @@ const setOrderPricing = async (orderId, staffUserId, data) => {
         }
       }
     } catch (ceilErr) {
-      console.error('تعذّر فحص سقوف القيمة عند التسعير (تم تجاوزه):', ceilErr.message);
+      throw ceilingsService.failClosed(ceilErr);
     }
 
     const beneficiary = data.transportBeneficiary || order.transport_beneficiary || null;
@@ -534,24 +526,14 @@ const createGroupOrder = async (userId, data) => {
       e.status = 400; e.code = 'INSUFFICIENT_STOCK'; throw e;
     }
 
-    // فحص سقف الكمية على إجمالي المجموعة دفعة واحدة (بدل فحص كل طلب منفرد لاحقًا
-    // بلا رؤية بعضها البعض ضمن نفس المعاملة)
-    try {
-      if (product.unit === 'bag') {
-        const check = await ceilingsService.checkOrderCeilings(client, {
-          customerId, sourceId: product.source_id, categoryId: null,
-          requestedBags: totalQuantity, requestedAmount: 0,
-        });
-        if (check.exceeded) {
-          const e = new Error('تجاوزت الكمية الإجمالية للمجموعة السقف المسموح به.');
-          e.status = 400; e.code = 'CEILING_EXCEEDED'; e.data = check.results.filter((r) => r.exceeded);
-          throw e;
-        }
-      }
-    } catch (ceilErr) {
-      if (ceilErr.code === 'CEILING_EXCEEDED') throw ceilErr;
-      console.error('تحذير: تعذّر فحص سقوف الطلب الجماعي (تم تجاوز الفحص):', ceilErr.message);
-    }
+    // فحص السقوف على إجمالي المجموعة دفعة واحدة (كمية + عدد الطلبات + القاطرات). فشل الفحص ⇒ رفض.
+    const groupBags = product.unit === 'bag' ? totalQuantity : product.unit === 'ton' ? totalQuantity * 20 : 0;
+    const ceilingCheck = await ceilingsService.enforceOrderCeilings(client, {
+      customerId,
+      entries: [{ sourceId: product.source_id, requestedBags: groupBags, requestedAmount: 0 }],
+      requestedOrders: data.trucks.length,
+      requestedVehicleIds: data.trucks.map((t) => t.vehicleId || t.truckPlate).filter(Boolean),
+    });
 
     let addressId = data.addressId || null;
     if (!addressId) {
@@ -626,10 +608,14 @@ const createGroupOrder = async (userId, data) => {
       createdOrders.push({ ...order, truck_plate: truck.truckPlate, quantity: qty });
     }
 
+    // الاستثناء المعتمد يُربط بأول طلب في المجموعة ويُستهلك مرة واحدة
+    await ceilingsService.consumeOverrides(client, ceilingCheck.overrideIds, createdOrders[0].id, userId);
+
     await client.query('COMMIT');
-    return { groupId, groupNumber, orders: createdOrders };
+    return { groupId, groupNumber, orders: createdOrders, ceiling_status: ceilingCheck.status };
   } catch (err) {
     await client.query('ROLLBACK');
+    await ceilingsService.runAfterRollback(err);
     throw err;
   } finally {
     client.release();

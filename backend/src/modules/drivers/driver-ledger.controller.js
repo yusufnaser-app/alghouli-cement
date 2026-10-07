@@ -11,6 +11,14 @@ const paymentSchema = z.object({
   idempotencyKey: z.string().max(80).optional(),
 });
 
+const openingSchema = z.object({
+  amount: z.union([z.string(), z.number()]).refine((v) => /^\d+(\.\d{1,2})?$/.test(String(v)) && Number(v) > 0, 'مبلغ غير صالح'),
+  side: z.enum(['owed_to_driver', 'owed_by_driver']),
+  currency: z.literal('YER').optional(),
+  asOf: z.string().max(40).optional(),
+  notes: z.string().max(300).optional(),
+});
+
 // ============ السائق ============
 const myProfile = asyncHandler(async (req, res) => {
   const p = await service.getMyProfile(req.user.id);
@@ -72,7 +80,14 @@ const recordDeduction = asyncHandler(async (req, res) => {
   return response.created(res, r, 'تم تسجيل الخصم');
 });
 
+const setOpeningBalance = asyncHandler(async (req, res) => {
+  const data = openingSchema.parse(req.body);
+  const r = await service.setDriverOpeningBalance(req.params.driverId, data, req.user.id, require('../audit/audit.service').requestContext(req));
+  return response.created(res, r, 'تم تسجيل الرصيد الافتتاحي للسائق');
+});
+
 module.exports = {
+  setOpeningBalance,
   myProfile, updateMyProfile,
   mySummary, myLedger,
   list, getLedger, getSummary,

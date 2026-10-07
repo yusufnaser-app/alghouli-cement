@@ -25,12 +25,14 @@ const enqueueSync = async ({
   payload,
   idempotencyKey,
   createdBy = null,
+  client = null, // اختياري: مرّر client المعاملة ليُكتب الطابور ذرّيًا مع قيد الدفتر (rollback = لا عنصر يتيم)
 }) => {
+  const runner = client || pool;
   if (!operation || !entityType || !entityId || !payload || !idempotencyKey) {
     throw new Error('enqueueSync: بيانات ناقصة (operation, entityType, entityId, payload, idempotencyKey إلزامية)');
   }
 
-  const r = await pool.query(
+  const r = await runner.query(
     `INSERT INTO accounting_sync_queue
        (accounting_system, operation, entity_type, entity_id, payload, idempotency_key, created_by)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -42,7 +44,7 @@ const enqueueSync = async ({
   if (r.rows.length > 0) return r.rows[0];
 
   // كانت موجودة مسبقًا بنفس idempotency_key — أعد الصف الحالي بدل إنشاء تكرار
-  const existing = await pool.query(
+  const existing = await runner.query(
     `SELECT * FROM accounting_sync_queue WHERE idempotency_key = $1`,
     [idempotencyKey]
   );

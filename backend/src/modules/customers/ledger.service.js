@@ -124,8 +124,14 @@ const setOpeningBalance = async (customerId, { amount, side, currency, asOf, not
       newValues: { customer_id: customerId, amount: String(amount), side, currency: cur, as_of: asOf || null },
       reason: notes || null, ip: ctx.ip, userAgent: ctx.userAgent,
     });
+    // YemenSoft: القيد المحلي فوري، والترحيل الرسمي PENDING في الطابور (نفس المعاملة، idempotent)
+    await require('../accounting/accounting-integration.service').enqueueSync({
+      client, operation: 'POST_OPENING_BALANCE', entityType: 'customer_ledger', entityId: r.entry.id,
+      payload: { party: 'customer', customer_id: customerId, amount: String(amount), side, currency: cur, as_of: asOf || null, reference: `OPEN-${cur}` },
+      idempotencyKey: `sync:opening:customer:${customerId}:${cur}`, createdBy: userId,
+    });
     await client.query('COMMIT');
-    return { entry_id: r.entry.id, currency: cur, balance: r.balance };
+    return { entry_id: r.entry.id, currency: cur, balance: r.balance, sync_status: 'PENDING' };
   } catch (err) { await client.query('ROLLBACK'); throw wrap(err); } finally { client.release(); }
 };
 

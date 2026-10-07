@@ -11,6 +11,7 @@ router.use(requireRoles('admin', 'sales'));
 router.get('/rules', controller.listRules);
 router.post('/rules', controller.createRule);
 router.put('/rules/:id', controller.updateRule);
+router.patch('/customers/:customerId/action', requireRoles('admin'), controller.setCustomerAction);
 router.get('/overrides', controller.listOverrides);
 router.patch('/overrides/:id/decide', requireRoles('admin'), controller.decideOverride);
 

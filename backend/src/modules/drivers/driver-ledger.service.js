@@ -87,6 +87,62 @@ const recordDriverMovement = async (driverId, data, userId, type, defaultDesc, c
     client.release();
   }
 };
+/**
+ * رصيد افتتاحي لسائق مؤسسة فقط (سائق التاجر حسابه عند تاجره). دفتر السائق بالريال فقط (رصيد واحد).
+ * side: owed_to_driver (مستحق للسائق ← debit) | owed_by_driver (على السائق للمؤسسة ← credit).
+ * واحد لكل (سائق، عملة): فهرس uq_driver_ledger_opening. المرجع الرسمي PENDING في طابور YemenSoft.
+ * asOf لا عمود له في driver_ledger (لا entry_date) → يُسجَّل في الوصف والتدقيق فقط.
+ */
+const setDriverOpeningBalance = async (driverId, { amount, side, currency = 'YER', asOf, notes }, userId, ctx = {}) => {
+  const core = require('../accounting/ledger.core');
+  const engine = require('../accounting/accounting.engine');
+  const { AccountingError } = engine;
+  const { logAudit } = require('../audit/audit.service');
+  const { enqueueSync } = require('../accounting/accounting-integration.service');
+  const fail = (message, code, status) => { const e = new Error(message); e.code = code; e.status = status; return e; };
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    if (currency !== 'YER') throw fail('دفتر السائق بالريال اليمني فقط', 'DRIVER_CURRENCY_YER_ONLY', 422);
+    if (!['owed_to_driver', 'owed_by_driver'].includes(side)) throw fail('الجانب يجب أن يكون owed_to_driver أو owed_by_driver', 'INVALID_SIDE', 400);
+    if (engine.toMinor(amount) <= 0) throw fail('مبلغ غير صالح', 'INVALID_AMOUNT', 400);
+
+    const d = await client.query(`SELECT id, driver_type, owner_trader_id FROM drivers WHERE id = $1 FOR UPDATE`, [driverId]);
+    if (!d.rows.length) throw fail('السائق غير موجود', 'DRIVER_NOT_FOUND', 404);
+    if (d.rows[0].driver_type !== 'institution_driver' || d.rows[0].owner_trader_id) {
+      throw fail('الرصيد الافتتاحي لسائقي المؤسسة فقط — سائق التاجر حسابه عند تاجره', 'NOT_INSTITUTION_DRIVER', 422);
+    }
+
+    const r = await core.postDriverEntry(client, {
+      driverId, currency, debit: side === 'owed_to_driver' ? String(amount) : 0, credit: side === 'owed_by_driver' ? String(amount) : 0,
+      transactionType: 'opening_balance',
+      description: `${notes || 'رصيد افتتاحي'}${asOf ? ` (بتاريخ ${asOf})` : ''}`,
+      referenceCode: `OPEN-DRV-${currency}`, sourceType: 'opening_balance',
+      idempotencyKey: `opening:driver:${driverId}:${currency}`, createdBy: userId,
+    });
+    if (r.duplicate) throw fail('يوجد رصيد افتتاحي لهذا السائق؛ صحّحه بتسوية أو عكس', 'OPENING_EXISTS', 409);
+
+    await logAudit(client, {
+      userId, action: 'DRIVER_OPENING_BALANCE_SET', entityType: 'driver_ledger', entityId: r.entry.id,
+      newValues: { driver_id: driverId, amount: String(amount), side, currency, as_of: asOf || null },
+      reason: notes || null, ip: ctx.ip, userAgent: ctx.userAgent,
+    });
+    await enqueueSync({
+      client, operation: 'POST_OPENING_BALANCE', entityType: 'driver_ledger', entityId: r.entry.id,
+      payload: { party: 'driver', driver_id: driverId, amount: String(amount), side, currency, as_of: asOf || null, reference: `OPEN-DRV-${currency}` },
+      idempotencyKey: `sync:opening:driver:${driverId}:${currency}`, createdBy: userId,
+    });
+    await client.query('COMMIT');
+    return { entry_id: r.entry.id, currency, new_balance: parseFloat(r.balance), sync_status: 'PENDING' };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    if (err instanceof AccountingError) { const e = new Error(err.message); e.status = err.status; e.code = err.code; throw e; }
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
 const recordPayment = (driverId, data, userId, ctx) => recordDriverMovement(driverId, data, userId, 'payment', `دفعة - ${data.method || 'نقدي'}`, ctx);
 const recordAdvance = (driverId, data, userId, ctx) => recordDriverMovement(driverId, data, userId, 'advance', 'سلفة', ctx);
 const recordDeduction = (driverId, data, userId, ctx) => recordDriverMovement(driverId, data, userId, 'deduction', 'خصم', ctx);
@@ -125,6 +181,7 @@ module.exports = {
   recordPayment,
   recordAdvance,
   recordDeduction,
+  setDriverOpeningBalance,
   listDriversWithBalance,
 };
 
