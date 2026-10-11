@@ -61,7 +61,7 @@ const getDriverStatement = async (driverId, { limit = 200, offset = 0 } = {}) =>
   if (!driver.rows.length) return null;
   const rows = await query(`
     SELECT dl.*, o.order_number FROM driver_ledger dl LEFT JOIN orders o ON o.id=dl.order_id
-    WHERE dl.driver_id=$1 ORDER BY dl.created_at DESC LIMIT $2 OFFSET $3`, [driverId, limit, offset]);
+    WHERE dl.driver_id=$1 ORDER BY COALESCE(dl.entry_date, dl.created_at) DESC, dl.created_at DESC LIMIT $2 OFFSET $3`, [driverId, limit, offset]);
   return { account_type: 'driver', driver: driver.rows[0], rows: rows.rows };
 };
 

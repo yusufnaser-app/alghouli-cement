@@ -57,9 +57,10 @@ const getLedger = asyncHandler(async (req, res) => {
 });
 
 const getSummary = asyncHandler(async (req, res) => {
-  const s = await service.getSummary(req.params.driverId);
-  if (!s) return response.error(res, 'السائق غير موجود', 404);
-  return response.success(res, s);
+  // الحقول القديمة تبقى للتوافق، والجديدة (opening_balance, transport_due, trips, outstanding_balance…) تُضاف
+  const account = await service.getAccountSummary(req.params.driverId);   // يرفض سائق التاجر 422
+  const legacy = await service.getSummary(req.params.driverId);
+  return response.success(res, { ...(legacy || {}), ...account });
 });
 
 const recordPayment = asyncHandler(async (req, res) => {

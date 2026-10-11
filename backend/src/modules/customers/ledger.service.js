@@ -30,7 +30,65 @@ const addTransaction = async (client, p) => {
 /** الأرصدة لكل عملة (من customer_balances = مجموع الدفتر). */
 const getBalances = async (customerId) => core.getBalances({ query }, customerId);
 
-/** ملخص الحساب لكل عملة على حدة — بلا جمع عملات. */
+/**
+ * تفصيل الحساب لكل عملة من الدفتر نفسه (لا خلط عملات). القيد العاكس يُنسب لنوع الأصل.
+ *  opening_balance: الرصيد الافتتاحي (مدين موجب)
+ *  sales:           البيع الفعلي للأسمنت صافيًا بعد الخصم وبدون أجور النقل
+ *  discounts:       الخصومات المطبّقة داخل البيع (معلومة — لا تُطرح مرة ثانية)
+ *  transport_fees:  أجور النقل المحمّلة على العميل (داخل قيد البيع الفعلي)
+ *  payments:        المدفوعات (دفعات معتمدة + يدوية) صافية
+ *  adjustments:     التسويات اليدوية (موجب يزيد الرصيد)
+ *  reconciled:      الرصيد المحسوب من الدفتر = customer_balances
+ */
+const loadBreakdown = async (customerId, balances) => {
+  const kinds = await query(
+    `SELECT cl.currency, COALESCE(orig.transaction_type, cl.transaction_type) AS kind,
+            COALESCE(SUM(cl.debit), 0) AS debit, COALESCE(SUM(cl.credit), 0) AS credit
+     FROM customer_ledger cl LEFT JOIN customer_ledger orig ON orig.id = cl.reversal_of_id
+     WHERE cl.customer_id = $1
+     GROUP BY cl.currency, COALESCE(orig.transaction_type, cl.transaction_type)`, [customerId]);
+  // أجور النقل والخصومات من ترحيل الطلبات التي ما زال بيعها قائمًا (صافي البيع > 0)
+  const tx = await query(
+    `SELECT p.currency, COALESCE(SUM(p.trader_transport_amount), 0) AS transport, COALESCE(SUM(disc.amount), 0) AS discounts
+     FROM order_accounting_postings p
+     JOIN orders o ON o.id = p.order_id
+     LEFT JOIN LATERAL (SELECT ROUND(SUM(COALESCE(oi.discount, 0)) * p.loaded_quantity / NULLIF(SUM(oi.quantity), 0), 2) AS amount
+                        FROM order_items oi WHERE oi.order_id = o.id) disc ON TRUE
+     WHERE o.customer_id = $1
+       AND (SELECT COALESCE(SUM(l.debit - l.credit), 0) FROM customer_ledger l
+            LEFT JOIN customer_ledger ro ON ro.id = l.reversal_of_id
+            WHERE l.order_id = o.id AND COALESCE(ro.transaction_type, l.transaction_type) = 'actual_sale') > 0
+     GROUP BY p.currency`, [customerId]);
+
+  const out = {};
+  for (const cur of engine.CURRENCIES) {
+    const rows = kinds.rows.filter((r) => r.currency === cur);
+    const t = tx.rows.find((r) => r.currency === cur);
+    if (!rows.length && balances[cur] === undefined) continue;
+    const m = {}; let total = 0;
+    for (const r of rows) {
+      const net = engine.toMinor(r.debit) - engine.toMinor(r.credit);   // مدين موجب
+      m[r.kind] = (m[r.kind] || 0) + net; total += net;
+    }
+    const net = (...ks) => ks.reduce((sum, k) => sum + (m[k] || 0), 0);
+    const transport = t ? engine.toMinor(t.transport) : 0;
+    const opening = net('opening_balance');
+    const sales = net('actual_sale') - transport;
+    const payments = -net('payment', 'manual_payment');
+    const adjustments = net('adjustment');
+    const other = total - (opening + sales + transport - payments + adjustments);
+    out[cur] = {
+      opening_balance: engine.fromMinor(opening), sales: engine.fromMinor(sales),
+      discounts: engine.fromMinor(t ? engine.toMinor(t.discounts) : 0),
+      transport_fees: engine.fromMinor(transport), payments: engine.fromMinor(payments),
+      adjustments: engine.fromMinor(adjustments), other: engine.fromMinor(other),
+      reconciled: total === engine.toMinor(balances[cur] || 0),
+    };
+  }
+  return out;
+};
+
+/** ملخص الحساب لكل عملة على حدة — بلا جمع عملات + الائتمان وحالة الحساب (الحد بالريال). */
 const getSummary = async (customerId) => {
   const r = await query(
     `SELECT cl.currency,
@@ -38,8 +96,13 @@ const getSummary = async (customerId) => {
             COALESCE(SUM(cl.credit),0) AS total_credit,
             COUNT(DISTINCT cl.order_id) AS total_orders
      FROM customer_ledger cl WHERE cl.customer_id = $1 GROUP BY cl.currency`, [customerId]);
-  const c = await query(`SELECT credit_limit FROM customers WHERE id = $1`, [customerId]);
+  const c = await query(
+    `SELECT c.credit_limit, u.status AS user_status FROM customers c LEFT JOIN users u ON u.id = c.user_id WHERE c.id = $1`, [customerId]);
   const balances = await getBalances(customerId);
+  const breakdown = await loadBreakdown(customerId, balances);
+  const pending = await query(
+    `SELECT COALESCE(SUM(credit_amount), 0) AS total FROM orders WHERE customer_id = $1 AND status = 'PENDING_ADMIN_APPROVAL'`, [customerId]);
+
   const byCurrency = {};
   for (const cur of engine.CURRENCIES) {
     const row = r.rows.find((x) => x.currency === cur);
@@ -49,9 +112,28 @@ const getSummary = async (customerId) => {
       side: engine.balanceSide(engine.toMinor(balances[cur] || 0)),
       total_debit: row ? engine.fromMinor(engine.toMinor(row.total_debit)) : '0.00',
       total_credit: row ? engine.fromMinor(engine.toMinor(row.total_credit)) : '0.00',
+      ...(breakdown[cur] || {}),
     };
   }
-  return { credit_limit: c.rows[0] ? c.rows[0].credit_limit : 0, balances: byCurrency };
+
+  const limitMinor = engine.toMinor(c.rows[0] ? c.rows[0].credit_limit : 0);
+  const hasLimit = limitMinor > 0;
+  const balYer = engine.toMinor(balances.YER || 0);
+  const pendingMinor = engine.toMinor(pending.rows[0] ? pending.rows[0].total : 0);
+  const availableMinor = hasLimit ? Math.max(0, limitMinor - balYer - pendingMinor) : null;
+  let accountStatus = 'active';
+  if (c.rows[0] && c.rows[0].user_status && c.rows[0].user_status !== 'active') accountStatus = 'blocked';
+  else if (hasLimit && balYer > limitMinor) accountStatus = 'over_limit';
+  else if (hasLimit && balYer * 5 >= limitMinor * 4) accountStatus = 'near_limit';
+
+  return {
+    credit_limit: c.rows[0] ? c.rows[0].credit_limit : 0,
+    has_limit: hasLimit,
+    available_credit: availableMinor === null ? null : engine.fromMinor(availableMinor),
+    pending_credit: engine.fromMinor(pendingMinor),
+    account_status: accountStatus,
+    balances: byCurrency,
+  };
 };
 
 /** قائمة الحركات الخام (للتوافق). المصدر الرسمي للكشف: accounting-statements.service. */

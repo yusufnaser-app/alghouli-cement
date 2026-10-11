@@ -148,13 +148,13 @@ const postDriverEntry = async (client, p) => {
   const ins = await client.query(
     `INSERT INTO driver_ledger
        (driver_id, order_id, transaction_type, description, debit, credit, balance_after, currency,
-        reference_code, created_by, source_type, source_id, idempotency_key, reversal_of_id, reason)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        reference_code, created_by, source_type, source_id, idempotency_key, reversal_of_id, reason, entry_date)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, COALESCE($16::timestamp, NOW()))
      ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
      RETURNING *`,
     [p.driverId, p.orderId || null, p.transactionType, p.description || null, fromMinor(d), fromMinor(c), fromMinor(next),
       currency, p.referenceCode || null, p.createdBy || null, p.sourceType || null, p.sourceId || null,
-      p.idempotencyKey || null, p.reversalOfId || null, p.reason || null]
+      p.idempotencyKey || null, p.reversalOfId || null, p.reason || null, p.entryDate || null]
   );
   if (!ins.rows.length) {
     const ex = await client.query(`SELECT * FROM driver_ledger WHERE idempotency_key = $1`, [p.idempotencyKey]);

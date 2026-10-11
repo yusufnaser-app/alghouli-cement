@@ -41,8 +41,8 @@ const getSummary = async (driverId) => {
        d.full_name, d.phone, d.current_balance,
        COALESCE(SUM(dl.debit), 0) AS total_dues,
        COALESCE(SUM(dl.credit), 0) AS total_paid,
-       COALESCE(SUM(CASE WHEN dl.transaction_type = 'advance' THEN dl.debit ELSE 0 END), 0) AS total_advances,
-       COALESCE(SUM(CASE WHEN dl.transaction_type = 'deduction' THEN dl.debit ELSE 0 END), 0) AS total_deductions
+       COALESCE(SUM(CASE WHEN dl.transaction_type = 'advance' THEN dl.credit ELSE 0 END), 0) AS total_advances,
+       COALESCE(SUM(CASE WHEN dl.transaction_type = 'deduction' THEN dl.credit ELSE 0 END), 0) AS total_deductions
      FROM drivers d
      LEFT JOIN driver_ledger dl ON dl.driver_id = d.id
      WHERE d.id = $1
@@ -50,6 +50,70 @@ const getSummary = async (driverId) => {
     [driverId]
   );
   return r.rows[0] || null;
+};
+
+/**
+ * ملخص حساب سائق المؤسسة (بالريال). التبويب بحسب نوع القيد؛ القيد العاكس يُنسب لنوع الأصل فيُنقص بنده.
+ * مستحق للسائق = موجب. رفض سائق التاجر: حسابه عند تاجره لا عند المؤسسة.
+ * reconciled: مجموع الدفتر = drivers.current_balance (كشف انحراف الرصيد المخزَّن).
+ */
+const getAccountSummary = async (driverId) => {
+  const { toMinor, fromMinor } = require('../accounting/accounting.engine');
+  const fail = (message, code, status) => { const e = new Error(message); e.code = code; e.status = status; return e; };
+
+  const d = await query(
+    `SELECT id, full_name, phone, driver_type, owner_trader_id, current_balance FROM drivers WHERE id = $1`, [driverId]);
+  if (!d.rows.length) throw fail('السائق غير موجود', 'DRIVER_NOT_FOUND', 404);
+  const drv = d.rows[0];
+  if (drv.driver_type !== 'institution_driver' || drv.owner_trader_id) {
+    throw fail('هذا سائق تاجر — حسابه عند تاجره وليس عند المؤسسة', 'NOT_INSTITUTION_DRIVER', 422);
+  }
+
+  const k = await query(
+    `SELECT COALESCE(orig.transaction_type, dl.transaction_type) AS kind,
+            COALESCE(SUM(dl.debit), 0) AS debit, COALESCE(SUM(dl.credit), 0) AS credit
+     FROM driver_ledger dl LEFT JOIN driver_ledger orig ON orig.id = dl.reversal_of_id
+     WHERE dl.driver_id = $1
+     GROUP BY COALESCE(orig.transaction_type, dl.transaction_type)`, [driverId]);
+  const m = {};
+  let total = 0;
+  for (const r of k.rows) {
+    const net = toMinor(r.debit) - toMinor(r.credit);   // موجب = مستحق للسائق
+    m[r.kind] = (m[r.kind] || 0) + net;
+    total += net;
+  }
+  const net = (...kinds) => kinds.reduce((sum, kind) => sum + (m[kind] || 0), 0);
+
+  const opening = net('opening_balance');
+  const transport = net('transport_due', 'transport_adjustment', 'transport_reversal');
+  const advances = -net('advance');
+  const payments = -net('payment');
+  const deductions = -net('deduction');
+  const other = total - (opening + transport - advances - payments - deductions);
+  const outstanding = toMinor(drv.current_balance);
+
+  const t = await query(
+    `SELECT COUNT(*) FILTER (WHERE status = 'DELIVERED')::int AS done,
+            COUNT(*) FILTER (WHERE status IN ('USED','READY_FOR_TRANSIT'))::int AS active
+     FROM loading_faxes WHERE driver_id = $1 AND COALESCE(is_managed_by_institution, TRUE) = TRUE`, [driverId]);
+
+  return {
+    account_type: 'institution_driver',
+    driver: { id: drv.id, full_name: drv.full_name, phone: drv.phone },
+    currency: 'YER',
+    opening_balance: fromMinor(Math.abs(opening)),
+    opening_side: opening > 0 ? 'owed_to_driver' : opening < 0 ? 'owed_by_driver' : 'none',
+    transport_due: fromMinor(transport),
+    trips: t.rows[0] ? t.rows[0].done : 0,
+    trips_in_progress: t.rows[0] ? t.rows[0].active : 0,
+    advances: fromMinor(advances),
+    payments: fromMinor(payments),
+    deductions: fromMinor(deductions),
+    other_adjustments: fromMinor(other),
+    outstanding_balance: fromMinor(Math.abs(outstanding)),
+    outstanding_side: outstanding > 0 ? 'owed_to_driver' : outstanding < 0 ? 'owed_by_driver' : 'settled',
+    reconciled: total === outstanding,
+  };
 };
 
 /**
@@ -91,7 +155,7 @@ const recordDriverMovement = async (driverId, data, userId, type, defaultDesc, c
  * رصيد افتتاحي لسائق مؤسسة فقط (سائق التاجر حسابه عند تاجره). دفتر السائق بالريال فقط (رصيد واحد).
  * side: owed_to_driver (مستحق للسائق ← debit) | owed_by_driver (على السائق للمؤسسة ← credit).
  * واحد لكل (سائق، عملة): فهرس uq_driver_ledger_opening. المرجع الرسمي PENDING في طابور YemenSoft.
- * asOf لا عمود له في driver_ledger (لا entry_date) → يُسجَّل في الوصف والتدقيق فقط.
+ * asOf يُحفظ في driver_ledger.entry_date (m39) ويُسجَّل في الوصف والتدقيق.
  */
 const setDriverOpeningBalance = async (driverId, { amount, side, currency = 'YER', asOf, notes }, userId, ctx = {}) => {
   const core = require('../accounting/ledger.core');
@@ -106,6 +170,12 @@ const setDriverOpeningBalance = async (driverId, { amount, side, currency = 'YER
     if (currency !== 'YER') throw fail('دفتر السائق بالريال اليمني فقط', 'DRIVER_CURRENCY_YER_ONLY', 422);
     if (!['owed_to_driver', 'owed_by_driver'].includes(side)) throw fail('الجانب يجب أن يكون owed_to_driver أو owed_by_driver', 'INVALID_SIDE', 400);
     if (engine.toMinor(amount) <= 0) throw fail('مبلغ غير صالح', 'INVALID_AMOUNT', 400);
+    let entryDate = null;
+    if (asOf) {
+      const when = new Date(asOf);
+      if (Number.isNaN(when.getTime())) throw fail('تاريخ الرصيد غير صالح', 'INVALID_DATE', 400);
+      entryDate = when.toISOString();
+    }
 
     const d = await client.query(`SELECT id, driver_type, owner_trader_id FROM drivers WHERE id = $1 FOR UPDATE`, [driverId]);
     if (!d.rows.length) throw fail('السائق غير موجود', 'DRIVER_NOT_FOUND', 404);
@@ -118,7 +188,7 @@ const setDriverOpeningBalance = async (driverId, { amount, side, currency = 'YER
       transactionType: 'opening_balance',
       description: `${notes || 'رصيد افتتاحي'}${asOf ? ` (بتاريخ ${asOf})` : ''}`,
       referenceCode: `OPEN-DRV-${currency}`, sourceType: 'opening_balance',
-      idempotencyKey: `opening:driver:${driverId}:${currency}`, createdBy: userId,
+      idempotencyKey: `opening:driver:${driverId}:${currency}`, createdBy: userId, entryDate,
     });
     if (r.duplicate) throw fail('يوجد رصيد افتتاحي لهذا السائق؛ صحّحه بتسوية أو عكس', 'OPENING_EXISTS', 409);
 
@@ -182,6 +252,7 @@ module.exports = {
   recordAdvance,
   recordDeduction,
   setDriverOpeningBalance,
+  getAccountSummary,
   listDriversWithBalance,
 };
 
