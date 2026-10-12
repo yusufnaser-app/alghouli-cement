@@ -92,12 +92,25 @@ const divRound = (num, den) => {
  * @param {string} [p.currency]
  * @param {boolean} [p.allowOverLoad=false]
  */
+// معامل التحويل إلى الأكياس: الطن = 20 كيسًا، الكيس = 1. الكمية المحمَّلة والفاكس دائمًا بالأكياس.
+const bagFactor = (unit) => (String(unit || 'bag').toLowerCase() === 'ton' ? 20 : 1);
+
+// حصة كل بند من الكمية المحمَّلة، معبَّرة بوحدة البند نفسه (لتخصم من المخزون بوحدته).
+// كل بند يُحمَّل بنفس النسبة L/R، لذلك: الكمية المحمّلة للبند = L × qty / R.
+const loadedInItemUnits = (items, loadedBags) => {
+  const R = items.reduce((s, i) => s + toMinor(i.quantity) * bagFactor(i.unit), 0);
+  const L = toMinor(loadedBags);
+  if (R <= 0) return items.map(() => 0);
+  return items.map((i) => fromMinor(Math.round((L * toMinor(i.quantity)) / R)));
+};
+
 const calcOrderValue = ({ items, loadedQuantity, transport = {}, currency = 'YER', allowOverLoad = false }) => {
   const cur = assertCurrency(currency);
   if (!Array.isArray(items) || items.length === 0) {
     throw new AccountingError('لا توجد أصناف في الطلب', 'NO_ITEMS');
   }
-  const reqH = items.reduce((s, i) => s + toMinor(i.quantity), 0); // بالمئات
+  // الطلب مُقاس بالأكياس (الطن = 20 كيسًا) حتى يقارن مع الكمية المحمّلة بالأكياس
+  const reqH = items.reduce((s, i) => s + toMinor(i.quantity) * bagFactor(i.unit), 0); // بالمئات، معادل أكياس
   const loadedH = toMinor(loadedQuantity);
   if (reqH <= 0) throw new AccountingError('كمية الطلب غير صحيحة', 'INVALID_QUANTITY');
   if (loadedH <= 0) throw new AccountingError('الكمية المحملة غير صحيحة', 'INVALID_QUANTITY');
@@ -554,7 +567,7 @@ const runIntegrityChecks = (d) => {
 
 module.exports = {
   CURRENCIES, TRANSPORT_MODES, AccountingError,
-  assertCurrency, toMinor, fromMinor, divRound,
+  assertCurrency, toMinor, fromMinor, divRound, bagFactor, loadedInItemUnits,
   calcOrderValue, diffPosting, signedToEntry,
   periodStart, periodEnd,
   computeBalances, buildStatement, rebuildAndCompare, verifyRunningChain, runIntegrityChecks,

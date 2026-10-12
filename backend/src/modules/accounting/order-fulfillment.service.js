@@ -87,7 +87,7 @@ const postActualLoading = async (client, faxId, loadedQuantity, postedBy, notes 
   let calc;
   try {
     calc = calcOrderValue({
-      items: items.rows.map((x) => ({ quantity: x.quantity, unitPrice: x.unit_price, discount: x.discount })),
+      items: items.rows.map((x) => ({ quantity: x.quantity, unit: x.unit, unitPrice: x.unit_price, discount: x.discount })),
       loadedQuantity,
       currency: fax.currency || 'YER',
       transport: resolveTransport(fax, fax),
@@ -147,9 +147,10 @@ const postActualLoading = async (client, faxId, loadedQuantity, postedBy, notes 
     `تحميل فعلي للطلب ${fax.order_number}`, ref, postedBy]);
 
   // 4) المخزون بالكمية الفعلية، وفك حجز الكمية المطلوبة
-  const reqTotal = items.rows.reduce((s, x) => s + toMinor(x.quantity), 0);
-  for (const item of items.rows) {
-    const itemLoaded = fromMinor(Math.round(toMinor(calc.loaded_quantity) * toMinor(item.quantity) / reqTotal));
+  // الكمية المحمَّلة لكل بند بوحدته (الطن يبقى طنًا، والكيس كيسًا)
+  const perItem = engine.loadedInItemUnits(items.rows, calc.loaded_quantity);
+  for (const [idx, item] of items.rows.entries()) {
+    const itemLoaded = perItem[idx];
     await client.query(`
       UPDATE inventory
       SET available_qty = GREATEST(0, available_qty - $1),
@@ -253,7 +254,7 @@ const adjustPostedOrder = async (orderId, input, userId, ctx = {}) => {
     if (input.transportAmount !== undefined) faxAdj.transport_total = input.transportAmount;
 
     const next = calcOrderValue({
-      items: items.map((x) => ({ quantity: x.quantity, unitPrice: x.unit_price, discount: x.discount || 0 })),
+      items: items.map((x) => ({ quantity: x.quantity, unit: x.unit, unitPrice: x.unit_price, discount: x.discount || 0 })),
       loadedQuantity: newLoaded, currency: order.currency || 'YER',
       transport: resolveTransport({ ...order }, faxAdj),
     });

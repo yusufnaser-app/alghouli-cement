@@ -31,17 +31,23 @@ String safeFileName(String raw) {
   return '${cleaned.isEmpty ? 'document' : cleaned}.pdf';
 }
 
+/// مهلة لكل خطوة (الجلب والتحويل): بدونها قد تبقى رسالة التحضير معلّقة إلى ما لا نهاية.
+const Duration _timeout = Duration(seconds: 60);
+
 Future<Uint8List> _fetchPdf(DocumentSpec d) async {
   final path = await d.path();
-  final res = await ApiClient().dio.get<String>(
-        path,
-        options: Options(responseType: ResponseType.plain),
-      );
+  debugPrint('[document] GET $path');
+  final res = await ApiClient()
+      .dio
+      .get<String>(path, options: Options(responseType: ResponseType.plain))
+      .timeout(_timeout, onTimeout: () => throw Exception('انتهت المهلة أثناء جلب المستند'));
   final html = res.data ?? '';
   if (!html.contains('<html')) {
     throw Exception('استجابة غير متوقعة من الخادم');
   }
-  return Printing.convertHtml(html: html);
+  debugPrint('[document] html ${html.length} chars, converting');
+  return Printing.convertHtml(html: html)
+      .timeout(_timeout, onTimeout: () => throw Exception('انتهت المهلة أثناء تحويل المستند إلى PDF'));
 }
 
 Future<void> _run(
@@ -59,11 +65,15 @@ Future<void> _run(
     final bytes = await _fetchPdf(d);
     await action(bytes, safeFileName(d.fileName));
   } on DioException catch (e) {
+    debugPrint('[document] dio: ${e.type} ${e.response?.statusCode} ${e.message}');
+    messenger.hideCurrentSnackBar();
     messenger.showSnackBar(SnackBar(
       content: Text(handleApiError(e)),
       backgroundColor: AppColors.danger,
     ));
   } catch (e) {
+    debugPrint('[document] failed: $e');
+    messenger.hideCurrentSnackBar();
     messenger.showSnackBar(SnackBar(
       content: Text(e.toString().replaceFirst('Exception: ', '')),
       backgroundColor: AppColors.danger,

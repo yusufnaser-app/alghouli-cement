@@ -291,7 +291,8 @@ const consumeOverrides = async (client, overrideIds, orderId, userId) => {
 
 const listOverrides = async (status) => {
   const params = []; let where = '';
-  if (status) { params.push(status); where = `WHERE status = $1`; }
+  // مؤهَّل بالاسم: users يحمل عمود status أيضًا فيحدث التباس
+  if (status) { params.push(status); where = `WHERE ov.status = $1`; }
   const r = await query(
     `SELECT ov.*, u.full_name AS customer_name, u.phone AS customer_phone
      FROM ceiling_overrides ov

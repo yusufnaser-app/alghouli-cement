@@ -70,7 +70,8 @@ const listCustomers = async () => {
     `SELECT c.id, c.customer_type, c.governorate, c.area,
             u.full_name, u.phone, u.status,
             (SELECT COUNT(*) FROM orders WHERE customer_id = c.id) AS orders_count,
-            (SELECT COALESCE(SUM(total_amount),0) FROM orders WHERE customer_id = c.id) AS total_spent
+            (SELECT COALESCE(SUM(total_amount),0) FROM orders WHERE customer_id = c.id) AS total_spent,
+            COALESCE((SELECT cb.balance FROM customer_balances cb WHERE cb.customer_id = c.id AND cb.currency = 'YER'), 0) AS current_balance
      FROM customers c
      JOIN users u ON u.id = c.user_id
      ORDER BY c.created_at DESC`
