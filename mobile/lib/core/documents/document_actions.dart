@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -22,19 +23,22 @@ class DocumentSpec {
   const DocumentSpec({required this.label, required this.path, required this.fileName});
 }
 
-/// اسم ملف آمن: حروف عربية/لاتينية وأرقام وشرطات سفلية فقط، بامتداد pdf.
-String safeFileName(String raw) {
+/// اسم أساسي آمن: حروف عربية/لاتينية وأرقام وشرطات سفلية فقط.
+String _baseName(String raw) {
   final cleaned = raw
       .replaceAll(RegExp(r'[^\w\u0600-\u06FF\-]+'), '_')
       .replaceAll(RegExp(r'_+'), '_')
       .replaceAll(RegExp(r'^_|_$'), '');
-  return '${cleaned.isEmpty ? 'document' : cleaned}.pdf';
+  return cleaned.isEmpty ? 'document' : cleaned;
 }
+
+/// اسم ملف PDF آمن: الاسم الأساسي مع امتداد pdf.
+String safeFileName(String raw) => '${_baseName(raw)}.pdf';
 
 /// مهلة لكل خطوة (الجلب والتحويل): بدونها قد تبقى رسالة التحضير معلّقة إلى ما لا نهاية.
 const Duration _timeout = Duration(seconds: 60);
 
-Future<Uint8List> _fetchPdf(DocumentSpec d) async {
+Future<String> _fetchHtml(DocumentSpec d) async {
   final path = await d.path();
   debugPrint('[document] GET $path');
   final res = await ApiClient()
@@ -45,6 +49,11 @@ Future<Uint8List> _fetchPdf(DocumentSpec d) async {
   if (!html.contains('<html')) {
     throw Exception('استجابة غير متوقعة من الخادم');
   }
+  return html;
+}
+
+Future<Uint8List> _fetchPdf(DocumentSpec d) async {
+  final html = await _fetchHtml(d);
   debugPrint('[document] html ${html.length} chars, converting');
   return Printing.convertHtml(html: html)
       .timeout(_timeout, onTimeout: () => throw Exception('انتهت المهلة أثناء تحويل المستند إلى PDF'));
@@ -73,6 +82,33 @@ Future<void> _run(
     ));
   } catch (e) {
     debugPrint('[document] failed: $e');
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(SnackBar(
+      content: Text(e.toString().replaceFirst('Exception: ', '')),
+      backgroundColor: AppColors.danger,
+    ));
+  }
+}
+
+/// مشاركة المستند كملف HTML: يُفتح في أي متصفح، ومنه يُحفظ PDF (طباعة ← حفظ كـ PDF).
+/// لا يعتمد على تحويل WebView، فلا تنتهي مهلته.
+Future<void> shareDocumentHtml(BuildContext context, DocumentSpec d) async {
+  final messenger = ScaffoldMessenger.of(context);
+  messenger.showSnackBar(const SnackBar(
+    content: Text('جارٍ تجهيز الملف...'),
+    duration: Duration(seconds: 2),
+  ));
+  try {
+    final html = await _fetchHtml(d);
+    final bytes = Uint8List.fromList(utf8.encode(html));
+    await Share.shareXFiles(
+      [XFile.fromData(bytes, mimeType: 'text/html', name: '${_baseName(d.fileName)}.html')],
+      subject: d.label,
+    );
+  } on DioException catch (e) {
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(SnackBar(content: Text(handleApiError(e)), backgroundColor: AppColors.danger));
+  } catch (e) {
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(SnackBar(
       content: Text(e.toString().replaceFirst('Exception: ', '')),
@@ -120,11 +156,11 @@ Future<void> showDocumentSheet(BuildContext context, List<DocumentSpec> docs) {
                     },
                   ),
                   IconButton(
-                    tooltip: 'مشاركة PDF',
+                    tooltip: 'مشاركة (يُفتح في المتصفح ويُحفظ PDF)',
                     icon: const Icon(Icons.share_outlined),
                     onPressed: () {
                       Navigator.pop(sheetCtx);
-                      shareDocument(context, d);
+                      shareDocumentHtml(context, d);
                     },
                   ),
                 ],
