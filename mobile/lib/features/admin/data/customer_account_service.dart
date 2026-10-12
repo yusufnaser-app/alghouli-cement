@@ -35,6 +35,18 @@ class CustomerAccountService {
     }
   }
 
+  /// يحدد سقف الائتمان بالريال فقط (0 = بلا سقف). السبب ثابت ومُسجَّل في التدقيق.
+  Future<void> setCreditLimit(String customerId, double limit) async {
+    try {
+      await _client.dio.patch(
+        '/admin/customers/$customerId/credit',
+        data: {'creditLimit': limit, 'reason': 'تحديد سقف الائتمان من تطبيق الموبايل'},
+      );
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+
   Future<Map<String, dynamic>> statement(String customerId) async {
     try {
       final res = await _client.dio.get('/accounting/customer/$customerId/statement');

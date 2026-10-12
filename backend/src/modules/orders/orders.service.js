@@ -455,7 +455,8 @@ const choosePaymentMethod = async (orderId, userId, data) => {
     if (creditAmount > 0) {
       creditCheck = await checkCreditAvailability(client, customerId, creditAmount);
       if (!creditCheck.can_approve) {
-        const e = new Error(`تجاوز الحد الائتماني. الرصيد: ${creditCheck.current_balance}، الحد: ${creditCheck.credit_limit}`);
+        const avail = Math.max(0, Math.round(Number(creditCheck.available_credit ?? 0)));
+        const e = new Error(`متجاوز الحد الائتماني المسموح به (${Math.round(creditCheck.credit_limit).toLocaleString('en-US')} ر.ي). المتاح حاليًا: ${avail.toLocaleString('en-US')} ر.ي — يرجى سداد المستحقات أولًا، أو اختيار الدفع نقدًا.`);
         e.status = 400; e.code = 'CREDIT_LIMIT_EXCEEDED'; e.data = creditCheck; throw e;
       }
     }

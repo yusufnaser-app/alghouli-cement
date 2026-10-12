@@ -4,6 +4,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/documents/document_actions.dart';
 import '../../data/customer_account_service.dart';
 
+
 /// كشف حساب عميل واحد: الملخص والسقوف والحركات، مع طباعة/مشاركة الكشف.
 class AdminCustomerAccountScreen extends StatefulWidget {
   final String customerId;
@@ -53,6 +54,50 @@ class _S extends State<AdminCustomerAccountScreen> {
     }
   }
 
+  /// نافذة فيها حقل المبلغ فقط: الإدارة تكتب السقف ويُحفظ مباشرة.
+  Future<void> _editLimit() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final current = (_summary?['credit_limit'] ?? '0').toString();
+    final ctrl = TextEditingController(text: (double.tryParse(current) ?? 0) > 0 ? current : '');
+    final value = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('سقف الائتمان (ريال)'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'المبلغ', hintText: 'اتركه فارغًا لإلغاء السقف'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: const Text('حفظ')),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (value == null) return;
+
+    final amount = value.isEmpty ? 0.0 : double.tryParse(value.replaceAll(',', ''));
+    if (amount == null || amount < 0) {
+      messenger.showSnackBar(const SnackBar(content: Text('أدخل مبلغًا صحيحًا (رقم صفر أو أكبر)')));
+      return;
+    }
+    try {
+      await _svc.setCreditLimit(widget.customerId, amount);
+      messenger.showSnackBar(SnackBar(
+        content: Text(amount == 0 ? 'تم إلغاء السقف' : 'تم تحديد السقف: ${fmtMoney(amount)} ر.ي'),
+        backgroundColor: AppColors.success,
+      ));
+      if (mounted) await _load();
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+        content: Text(e.toString().replaceFirst('Exception: ', '')),
+        backgroundColor: AppColors.danger,
+      ));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Directionality(
@@ -62,6 +107,11 @@ class _S extends State<AdminCustomerAccountScreen> {
         appBar: AppBar(
           title: Text(widget.customerName),
           actions: [
+            IconButton(
+              tooltip: 'تحديد السقف',
+              icon: const Icon(Icons.credit_score),
+              onPressed: _loading ? null : _editLimit,
+            ),
             DocumentMenuButton(docs: [
               DocumentSpec(
                 label: 'كشف حساب العميل',
