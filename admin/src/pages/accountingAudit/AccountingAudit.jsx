@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import client, { handleError } from '../../api/client';
 
 // عرض فقط: كل الأرقام تأتي جاهزة من Backend كنصوص عشرية ولا تُحسب هنا.
@@ -8,6 +8,7 @@ const SEV = { high: '#c62828', medium: '#ef6c00', low: '#555' };
 export default function AccountingAudit() {
   const [tab, setTab] = useState('statement');
   const [customerId, setCustomerId] = useState('');
+  const [customers, setCustomers] = useState([]);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [statement, setStatement] = useState(null);
@@ -18,6 +19,11 @@ export default function AccountingAudit() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
+  // قائمة العملاء بدل إدخال المعرّف يدويًا
+  useEffect(() => {
+    client.get('/admin/customers').then((r) => setCustomers(r.data.data || [])).catch(() => setCustomers([]));
+  }, []);
+
   const run = async (fn) => { setBusy(true); setError(''); try { await fn(); } catch (e) { setError(handleError(e)); } finally { setBusy(false); } };
   const qs = () => { const p = new URLSearchParams(); if (from) p.set('from', from); if (to) p.set('to', to); return p.toString(); };
 
@@ -27,10 +33,16 @@ export default function AccountingAudit() {
     const b = await client.get(`/accounting/customer/${customerId.trim()}/rebuild`).catch(() => null);
     setRebuild(b ? b.data.data : null);
   });
-  const printStatement = async () => run(async () => {
-    const r = await client.get(`/accounting/customer/${customerId.trim()}/statement/print?${qs()}`, { responseType: 'text' });
-    const w = window.open('', '_blank'); w.document.write(r.data); w.document.close(); setTimeout(() => w.print(), 400);
-  });
+  // نافذة الطباعة تُفتح فورًا (قبل أي await) حتى لا يمنعها المتصفح، ثم تُملأ بمستند F3
+  const printStatement = () => {
+    const w = window.open('', '_blank');
+    run(async () => {
+      const r = await client.get(`/documents/customer/${customerId.trim()}/statement?${qs()}`, { responseType: 'text' });
+      if (!w) throw new Error('المتصفح منع نافذة الطباعة — اسمح بالنوافذ المنبثقة لهذا الموقع');
+      w.document.write(r.data); w.document.close();
+      setTimeout(() => { try { w.print(); } catch (_) { /* تُطبع يدويًا */ } }, 400);
+    });
+  };
   const runIntegrity = () => run(async () => { const r = await client.get('/accounting/integrity-check'); setIntegrity(r.data.data); });
   const loadAudit = () => run(async () => { const r = await client.get(`/accounting/audit-log?limit=200${auditAction ? `&action=${auditAction}` : ''}`); setAudit(r.data.data); });
 
@@ -46,7 +58,10 @@ export default function AccountingAudit() {
       {tab === 'statement' && (
         <div className="card">
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-            <input className="form-control" style={{ minWidth: 300 }} placeholder="معرّف العميل (UUID)" value={customerId} onChange={(e) => setCustomerId(e.target.value)} />
+            <select className="form-control" style={{ minWidth: 300 }} value={customerId} onChange={(e) => { setCustomerId(e.target.value); setStatement(null); setRebuild(null); }}>
+              <option value="">— اختر العميل —</option>
+              {customers.map((c) => <option key={c.id} value={c.id}>{c.full_name} — {c.phone || ''}</option>)}
+            </select>
             <input type="date" className="form-control" value={from} onChange={(e) => setFrom(e.target.value)} />
             <input type="date" className="form-control" value={to} onChange={(e) => setTo(e.target.value)} />
             <button className="btn btn-primary" disabled={busy || !customerId} onClick={loadStatement}>عرض</button>
