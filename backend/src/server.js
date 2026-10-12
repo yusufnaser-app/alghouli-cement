@@ -14,6 +14,10 @@ const start = async () => {
       console.log(`🌐 http://localhost:${PORT}`);
       console.log(`🔧 البيئة: ${process.env.NODE_ENV}`);
     });
+
+    // مستمع الإشعارات الفورية (غير حاسم: فشله لا يوقف الخادم)
+    require('./services/push-listener').startPushListener()
+      .catch((e) => console.error('❌ مستمع الإشعارات الفورية:', e.message));
   } catch (err) {
     console.error('❌ فشل بدء الخادم:', err.message);
     process.exit(1);
