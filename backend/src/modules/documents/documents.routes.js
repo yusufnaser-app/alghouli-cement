@@ -12,6 +12,7 @@ router.get('/order/:id/value-notice', c.orderValueNotice);
 router.get('/fax/:id', c.fax);
 router.get('/fax/:id/loading', c.loading);
 router.get('/fax/:id/delivery', c.delivery);
+router.get('/my/statement', c.myStatement);
 router.get('/customer/:customerId/statement', c.customerStatement);
 router.get('/driver/:driverId/statement', c.driverStatement);
 router.get('/payment/:id/receipt', c.paymentReceipt);

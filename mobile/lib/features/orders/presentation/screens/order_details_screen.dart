@@ -1,3 +1,4 @@
+import '../../../../core/documents/document_actions.dart';
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../data/order_service.dart';
@@ -91,6 +92,19 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       appBar: AppBar(
         title: const Text('تفاصيل الطلب'),
         actions: [
+          if (_order != null)
+            DocumentMenuButton(docs: [
+              DocumentSpec(
+                label: 'طلب شراء',
+                path: () async => '/documents/order/${widget.orderId}/purchase-request',
+                fileName: 'طلب_شراء_${_order?['order_number'] ?? widget.orderId}',
+              ),
+              DocumentSpec(
+                label: 'إشعار قيمة الطلب',
+                path: () async => '/documents/order/${widget.orderId}/value-notice',
+                fileName: 'إشعار_قيمة_${_order?['order_number'] ?? widget.orderId}',
+              ),
+            ]),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),

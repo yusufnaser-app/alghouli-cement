@@ -1,3 +1,4 @@
+import '../../../../core/documents/document_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -307,6 +308,26 @@ class _FaxDetailsScreenState extends State<FaxDetailsScreen> {
       appBar: AppBar(
         title: const Text('تفاصيل الرحلة'),
         actions: [
+          if (_fax != null)
+            DocumentMenuButton(docs: [
+              DocumentSpec(
+                label: 'فاكس التحميل',
+                path: () async => '/documents/fax/${widget.faxId}',
+                fileName: 'فاكس_${_fax?['fax_number'] ?? widget.faxId}',
+              ),
+              if (const ['USED', 'READY_FOR_TRANSIT', 'DELIVERED'].contains(_fax?['status']))
+                DocumentSpec(
+                  label: 'مستند التحميل',
+                  path: () async => '/documents/fax/${widget.faxId}/loading',
+                  fileName: 'تحميل_${_fax?['fax_number'] ?? widget.faxId}',
+                ),
+              if (const ['READY_FOR_TRANSIT', 'DELIVERED'].contains(_fax?['status']))
+                DocumentSpec(
+                  label: 'مستند التسليم',
+                  path: () async => '/documents/fax/${widget.faxId}/delivery',
+                  fileName: 'تسليم_${_fax?['fax_number'] ?? widget.faxId}',
+                ),
+            ]),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),

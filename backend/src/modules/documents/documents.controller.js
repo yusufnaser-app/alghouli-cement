@@ -26,6 +26,9 @@ const delivery = asyncHandler(async (req, res) => send(res, await svc.deliveryDo
 const customerStatement = asyncHandler(async (req, res) => send(res, await svc.customerStatement(await ctxOf(req), req.params.customerId, {
   from: req.query.from, to: req.query.to, currency: req.query.currency,
 })));
+const myStatement = asyncHandler(async (req, res) => send(res, await svc.myCustomerStatement(await ctxOf(req), {
+  from: req.query.from, to: req.query.to, currency: req.query.currency,
+})));
 const driverStatement = asyncHandler(async (req, res) => send(res, await svc.driverStatement(await ctxOf(req), req.params.driverId)));
 const paymentReceipt = asyncHandler(async (req, res) => send(res, await svc.paymentReceipt(await ctxOf(req), req.params.id)));
 const report = asyncHandler(async (req, res) => send(res, await svc.report(await ctxOf(req), req.params.kind, {
@@ -34,5 +37,5 @@ const report = asyncHandler(async (req, res) => send(res, await svc.report(await
 
 module.exports = {
   orderPurchaseRequest, orderValueNotice, fax, loading, delivery,
-  customerStatement, driverStatement, paymentReceipt, report,
+  customerStatement, myStatement, driverStatement, paymentReceipt, report,
 };

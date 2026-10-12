@@ -428,7 +428,15 @@ const report = async (ctx, kind, params = {}) => {
     meta: [['من', rg.from], ['إلى', rg.to]], blocks, signatures: ['معدّ التقرير', 'الاعتماد'] });
 };
 
+/** كشف العميل الشخصي: يحلّ معرّف العميل من المستخدم المسجَّل (لا يقبل معرّفًا من الطلب). */
+const myCustomerStatement = async (ctx, opts = {}) => {
+  const r = await query(`SELECT id FROM customers WHERE user_id = $1 LIMIT 1`, [ctx.userId]);
+  if (!r.rows.length) throw fail('لا يوجد حساب عميل مرتبط بهذا المستخدم', 404, 'NO_CUSTOMER_ACCOUNT');
+  return customerStatement(ctx, r.rows[0].id, opts);
+};
+
 module.exports = {
+  myCustomerStatement,
   orderPurchaseRequest, orderValueNotice, faxDocument, loadingDocument, deliveryDocument,
   customerStatement, driverStatement, paymentReceipt, report, REPORTS, parseRange,
 };

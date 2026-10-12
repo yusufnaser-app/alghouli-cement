@@ -1,3 +1,4 @@
+import '../../../../core/documents/document_actions.dart';
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../data/statement_service.dart';
@@ -63,7 +64,16 @@ class _MyStatementScreenState extends State<MyStatementScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('كشف الحساب'), actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))]),
+      appBar: AppBar(title: const Text('كشف الحساب'), actions: [
+        DocumentMenuButton(docs: [
+          DocumentSpec(
+            label: 'كشف حسابي',
+            path: () async => '/documents/my/statement',
+            fileName: 'كشف_حسابي',
+          ),
+        ]),
+        IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
+      ]),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null

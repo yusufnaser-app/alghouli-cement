@@ -1,3 +1,4 @@
+import '../../../../core/documents/document_actions.dart';
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../data/driver_service.dart';
@@ -78,6 +79,16 @@ class _MyWalletScreenState extends State<MyWalletScreen> {
       appBar: AppBar(
         title: const Text('مستحقاتي'),
         actions: [
+          DocumentMenuButton(docs: [
+            DocumentSpec(
+              label: 'كشف حساب السائق',
+              path: () async {
+                final p = await _service.myProfile();
+                return '/documents/driver/${p['id']}/statement';
+              },
+              fileName: 'كشف_سائق',
+            ),
+          ]),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),

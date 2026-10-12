@@ -1,3 +1,4 @@
+import '../../../../core/documents/document_actions.dart';
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../data/admin_service.dart';
@@ -117,10 +118,21 @@ class _S extends State<AdminStatementLookupScreen> {
             Text('الرصيد: ${c['current_balance']} ر.ي',
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.primary)),
             const SizedBox(height: 12),
-            const Text('لعرض التفاصيل الكاملة استخدم الويب', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+            const Text('الكشف الكامل متاح للطباعة أو المشاركة بالزر أدناه', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
           ],
         ),
         actions: [
+          TextButton.icon(
+            icon: const Icon(Icons.print_outlined),
+            label: const Text('طباعة / مشاركة'),
+            onPressed: () => showDocumentSheet(context, [
+              DocumentSpec(
+                label: 'كشف حساب العميل',
+                path: () async => '/documents/customer/${c['id']}/statement',
+                fileName: 'كشف_${c['full_name'] ?? 'عميل'}',
+              ),
+            ]),
+          ),
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('إغلاق')),
         ],
       ),
