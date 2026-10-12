@@ -1,7 +1,8 @@
 const path = require('path');
 
-// تحميل firebase-admin عند التهيئة فقط (الخادم يعمل بدونه إن لم يُهيَّأ)
-let admin = null;
+// الواجهة المعيارية لـ firebase-admin (الإصدارات الحديثة لم تعد تُصدّر واجهة الاعتماد القديمة).
+// تُحمَّل عند التهيئة فقط، فالخادم يعمل بدونها إن لم تُهيَّأ.
+let messagingApi = null;
 let initialized = false;
 
 /**
@@ -22,10 +23,11 @@ const loadServiceAccount = () => {
 const initFirebase = () => {
   if (initialized) return;
   try {
-    admin = require('firebase-admin');
+    const { initializeApp, cert } = require('firebase-admin/app');
+    messagingApi = require('firebase-admin/messaging');
     const serviceAccount = loadServiceAccount();
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
+    initializeApp({
+      credential: cert(serviceAccount),
     });
     initialized = true;
     console.log('✅ Firebase Admin initialized');
@@ -59,7 +61,7 @@ const sendPushNotification = async (fcmToken, title, body, data = {}) => {
   };
 
   try {
-    const response = await admin.messaging().send(message);
+    const response = await messagingApi.getMessaging().send(message);
     console.log('✅ Push sent:', response);
     return response;
   } catch (e) {
