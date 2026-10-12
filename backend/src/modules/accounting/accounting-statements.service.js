@@ -47,14 +47,48 @@ const attachOrderDetails = async (sections) => {
        LEFT JOIN product_sources ps ON ps.id = f.factory_id
        WHERE f.order_id = ANY($1::uuid[]) AND f.status <> 'CANCELLED'
        ORDER BY f.order_id, f.requested_at DESC`, [ids]);
-    for (const f of faxes.rows) {
-      const cur = info.get(f.order_id) || {};
-      Object.assign(cur, {
-        fax_number: f.fax_number, driver: f.driver_name, vehicle: f.plate_number, factory: f.factory_name,
-        loaded_bags: f.loaded_quantity, requested_bags: f.requested_quantity,
-      });
-      info.set(f.order_id, cur);
-    }
+    // ربط الفاكس بالطلب من ثلاثة مصادر، بالأولوية: loading_faxes.order_id ← orders.fax_id ← وجهات الطلب
+    const faxFields = (f) => ({
+      fax_number: f.fax_number, driver: f.driver_name, vehicle: f.plate_number, factory: f.factory_name,
+      loaded_bags: f.loaded_quantity, requested_bags: f.requested_quantity,
+    });
+    const fill = (orderId, fields) => {
+      const cur = info.get(orderId) || {};
+      for (const [k, v] of Object.entries(fields)) if (cur[k] === undefined || cur[k] === null || cur[k] === '') cur[k] = v;
+      info.set(orderId, cur);
+    };
+    for (const f of faxes.rows) fill(f.order_id, faxFields(f));
+
+    const viaOrder = await query(
+      `SELECT o.id AS order_id, f.fax_number, f.loaded_quantity, f.requested_quantity,
+              d.full_name AS driver_name, v.plate_number, ps.name_ar AS factory_name
+       FROM orders o
+       JOIN loading_faxes f ON f.id = o.fax_id
+       LEFT JOIN drivers d ON d.id = f.driver_id
+       LEFT JOIN vehicles v ON v.id = f.vehicle_id
+       LEFT JOIN product_sources ps ON ps.id = f.factory_id
+       WHERE o.id = ANY($1::uuid[]) AND f.status <> 'CANCELLED'`, [ids]);
+    for (const f of viaOrder.rows) fill(f.order_id, faxFields(f));
+
+    const viaDest = await query(
+      `SELECT DISTINCT ON (x.fulfills_order_id) x.fulfills_order_id AS order_id, f.fax_number, f.loaded_quantity, f.requested_quantity,
+              d.full_name AS driver_name, v.plate_number, ps.name_ar AS factory_name
+       FROM delivery_destinations x
+       JOIN loading_faxes f ON f.id = x.fax_id
+       LEFT JOIN drivers d ON d.id = f.driver_id
+       LEFT JOIN vehicles v ON v.id = f.vehicle_id
+       LEFT JOIN product_sources ps ON ps.id = f.factory_id
+       WHERE x.fulfills_order_id = ANY($1::uuid[]) AND x.status <> 'CANCELLED' AND f.status <> 'CANCELLED'
+       ORDER BY x.fulfills_order_id, f.requested_at DESC`, [ids]);
+    for (const f of viaDest.rows) fill(f.order_id, faxFields(f));
+
+    // السائق من دفتر النقل إن لم يُعرف من الفاكس (يبقى صحيحًا حتى لو تغيّر الفاكس)
+    const drv = await query(
+      `SELECT DISTINCT ON (dl.order_id) dl.order_id, d.full_name AS driver_name
+       FROM driver_ledger dl JOIN drivers d ON d.id = dl.driver_id
+       WHERE dl.order_id = ANY($1::uuid[]) AND dl.transaction_type IN ('transport_due', 'transport_adjustment')
+       ORDER BY dl.order_id, dl.created_at DESC`, [ids]);
+    for (const r of drv.rows) fill(r.order_id, { driver: r.driver_name });
   }
   for (const s of sections) {
     for (const r of s.rows) {

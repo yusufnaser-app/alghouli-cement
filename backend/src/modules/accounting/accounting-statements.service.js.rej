@@ -1,0 +1,72 @@
+--- backend/src/modules/accounting/accounting-statements.service.js	2026-10-12 17:19:41.482575679 +0000
++++ backend/src/modules/accounting/accounting-statements.service.js	2026-10-12 17:19:41.488273086 +0000
+@@ -19,9 +19,69 @@
+  * لكل عملة قسم مستقل: افتتاحي، حركات برصيد جارٍ، إجمالي مدين/دائن، ختامي.
+  * يُرجَع أيضًا الرصيد المخزّن وحالة المطابقة (لا يُخفى أي فرق).
+  */
++/**
++ * تفاصيل كل حركة من الطلب الذي تخصّها: الأسمنت، الأكياس المطلوبة والمحمّلة، السائق، القاطرة، الفاكس، المصنع.
++ * تُحسب بقراءتين فقط مهما كان عدد الحركات (لا استعلام لكل صف).
++ */
++const attachOrderDetails = async (sections) => {
++  const ids = [...new Set(sections.flatMap((s) => s.rows.map((r) => r.order_id).filter(Boolean)))];
++  const info = new Map();
++  if (ids.length) {
++    const items = await query(
++      `SELECT o.id, o.order_number,
++              string_agg(DISTINCT p.name_ar, '، ') AS cement,
++              COALESCE(SUM(oi.quantity * CASE WHEN oi.unit = 'ton' THEN 20 ELSE 1 END), 0) AS ordered_bags
++       FROM orders o
++       LEFT JOIN order_items oi ON oi.order_id = o.id
++       LEFT JOIN products p ON p.id = oi.product_id
++       WHERE o.id = ANY($1::uuid[])
++       GROUP BY o.id, o.order_number`, [ids]);
++    for (const r of items.rows) info.set(r.id, { order_number: r.order_number, cement: r.cement, ordered_bags: r.ordered_bags });
++
++    const faxes = await query(
++      `SELECT DISTINCT ON (f.order_id) f.order_id, f.fax_number, f.loaded_quantity, f.requested_quantity,
++              d.full_name AS driver_name, v.plate_number, ps.name_ar AS factory_name
++       FROM loading_faxes f
++       LEFT JOIN drivers d ON d.id = f.driver_id
++       LEFT JOIN vehicles v ON v.id = f.vehicle_id
++       LEFT JOIN product_sources ps ON ps.id = f.factory_id
++       WHERE f.order_id = ANY($1::uuid[]) AND f.status <> 'CANCELLED'
++       ORDER BY f.order_id, f.requested_at DESC`, [ids]);
++    for (const f of faxes.rows) {
++      const cur = info.get(f.order_id) || {};
++      Object.assign(cur, {
++        fax_number: f.fax_number, driver: f.driver_name, vehicle: f.plate_number, factory: f.factory_name,
++        loaded_bags: f.loaded_quantity, requested_bags: f.requested_quantity,
++      });
++      info.set(f.order_id, cur);
++    }
++  }
++  for (const s of sections) {
++    for (const r of s.rows) {
++      const d = r.order_id ? info.get(r.order_id) : null;
++      if (!d) { r.details = null; r.details_text = ''; continue; }
++      const bags = d.loaded_bags ?? d.requested_bags ?? d.ordered_bags;
++      const parts = [
++        d.cement && `الأسمنت: ${d.cement}`,
++        bags !== null && bags !== undefined && `الكمية: ${Number(bags)} كيس`,
++        d.driver && `السائق: ${d.driver}`,
++        d.vehicle && `القاطرة: ${d.vehicle}`,
++        d.factory && `المصنع: ${d.factory}`,
++        d.order_number && `الطلب: ${d.order_number}`,
++        d.fax_number && `الفاكس: ${d.fax_number}`,
++      ].filter(Boolean);
++      r.details = { order_number: d.order_number, cement: d.cement || null, bags: bags ?? null,
++        driver: d.driver || null, vehicle: d.vehicle || null, factory: d.factory || null, fax_number: d.fax_number || null };
++      r.details_text = parts.join(' · ');
++    }
++  }
++  return sections;
++};
++
+ const buildCustomerStatement = async (customer, { from, to, currency } = {}) => {
+   const entries = await fetchEntries(customer.id, currency);
+   const statement = engine.buildStatement(entries, { from, to, currency });
++  await attachOrderDetails(statement.sections);
+   const stored = await query(`SELECT currency, balance FROM customer_balances WHERE customer_id = $1`, [customer.id]);
+   const storedMap = {};
+   stored.rows.forEach((r) => { storedMap[r.currency] = r.balance; });
