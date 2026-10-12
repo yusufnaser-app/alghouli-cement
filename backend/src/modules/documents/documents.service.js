@@ -108,7 +108,8 @@ const orderValueNotice = async (ctx, orderId) => {
 const loadFax = async (ctx, faxId) => {
   const r = await query(
     `SELECT f.id, f.fax_number, f.status, f.requested_quantity, f.approved_quantity, f.loaded_quantity,
-            f.requested_at, f.approved_at, f.issued_at, f.used_at, f.delivered_at,
+            f.requested_at, f.approved_at, f.issued_at, f.used_at,
+            (SELECT MAX(x.delivered_at) FROM delivery_destinations x WHERE x.fax_id = f.id) AS delivered_at,
             f.delivery_governorate, f.delivery_area, f.delivery_address, f.is_managed_by_institution, f.route, f.order_id,
             d.full_name AS driver_name, d.user_id AS driver_user_id, COALESCE(d.phone, du.phone) AS driver_phone,
             v.plate_number, ps.name_ar AS factory_name, o.order_number, cu.user_id AS customer_user_id
