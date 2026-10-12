@@ -1,4 +1,5 @@
-const { query } = require('../../config/db');
+const { query, pool } = require('../../config/db');
+const { logAudit } = require('../audit/audit.service');
 
 const dashboard = async () => {
   const today = new Date();
@@ -71,7 +72,9 @@ const listCustomers = async () => {
             u.full_name, u.phone, u.status,
             (SELECT COUNT(*) FROM orders WHERE customer_id = c.id) AS orders_count,
             (SELECT COALESCE(SUM(total_amount),0) FROM orders WHERE customer_id = c.id) AS total_spent,
-            COALESCE((SELECT cb.balance FROM customer_balances cb WHERE cb.customer_id = c.id AND cb.currency = 'YER'), 0) AS current_balance
+            COALESCE((SELECT cb.balance FROM customer_balances cb WHERE cb.customer_id = c.id AND cb.currency = 'YER'), 0) AS current_balance,
+            c.credit_limit, c.ceiling_action,
+            (SELECT COUNT(*) FROM order_ceilings oc WHERE oc.customer_id = c.id AND oc.is_active)::int AS ceilings_count
      FROM customers c
      JOIN users u ON u.id = c.user_id
      ORDER BY c.created_at DESC`
@@ -112,4 +115,27 @@ const updateOrderStatus = async (orderId, newStatus, userId, reason, ctx = {}) =
   } catch (err) { await client.query('ROLLBACK'); throw err; } finally { client.release(); }
 };
 
-module.exports = { dashboard, listOrders, listCustomers, updateOrderStatus };
+/** حد ائتمان العميل بالريال. التغيير يُسجَّل في سجل التدقيق بالقيمة القديمة والجديدة والسبب. */
+const setCustomerCreditLimit = async (customerId, creditLimit, userId, { reason, ip, userAgent } = {}) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const old = await client.query(`SELECT id, credit_limit FROM customers WHERE id = $1 FOR UPDATE`, [customerId]);
+    if (!old.rows.length) { const e = new Error('العميل غير موجود'); e.status = 404; throw e; }
+    const r = await client.query(`UPDATE customers SET credit_limit = $1 WHERE id = $2 RETURNING id, credit_limit`, [creditLimit, customerId]);
+    await logAudit(client, {
+      userId, action: 'CUSTOMER_CREDIT_LIMIT_CHANGED', entityType: 'customers', entityId: customerId,
+      oldValues: { credit_limit: old.rows[0].credit_limit }, newValues: { credit_limit: creditLimit },
+      reason: reason || null, ip, userAgent,
+    });
+    await client.query('COMMIT');
+    return r.rows[0];
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+};
+
+module.exports = { dashboard, listOrders, listCustomers, updateOrderStatus, setCustomerCreditLimit };

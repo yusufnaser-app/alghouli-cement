@@ -11,6 +11,7 @@ router.get('/dashboard', requireRoles('admin', 'sales', 'accountant'), controlle
 router.get('/orders', requireRoles('admin', 'sales'), controller.listOrders);
 router.get('/customers', requireRoles('admin', 'sales'), controller.listCustomers);
 router.patch('/orders/:id/status', requirePermission('orders.update'), controller.updateOrderStatus);
+router.patch('/customers/:customerId/credit', requirePermission('ledger.adjust'), controller.setCreditLimit);
 
 // ═══ إدارة المستخدمين ═══
 router.get('/users', requirePermission('users.view'), usersController.list);
