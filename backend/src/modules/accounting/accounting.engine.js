@@ -267,6 +267,7 @@ const buildStatement = (entries, { from = null, to = null, currency = null } = {
         description: e.description || e.transaction_type,
         transaction_type: e.transaction_type,
         reference: e.reference_code || null,
+        order_id: e.order_id || null,
         order_number: e.order_number || null,
         currency: cur,
         debit: fromMinor(d),

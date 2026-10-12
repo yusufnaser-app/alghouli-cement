@@ -203,12 +203,14 @@ const customerStatement = async (ctx, customerId, { from, to, currency } = {}) =
   for (const s of st.sections) {
     const rows = [{ date: null, description: 'الرصيد الافتتاحي', reference: '', debit: '', credit: '', balance: s.opening_balance, _class: 'open' },
       ...s.rows.map((r) => ({ date: r.date, description: r.reason ? `${r.description} — ${r.reason}` : r.description,
-        reference: r.reference || r.order_number || '', debit: r.debit === '0.00' ? '' : r.debit, credit: r.credit === '0.00' ? '' : r.credit,
+        reference: r.reference || r.order_number || '', details: r.details_text || '',
+        debit: r.debit === '0.00' ? '' : r.debit, credit: r.credit === '0.00' ? '' : r.credit,
         balance: r.balance, _class: r.is_reversal ? 'rev' : '' })),
-      { date: null, description: 'الإجمالي', reference: '', debit: s.total_debit, credit: s.total_credit, balance: '', _class: 'sum' },
-      { date: null, description: `الرصيد الحالي (${s.closing_side})`, reference: '', debit: '', credit: '', balance: s.closing_balance, _class: 'close' }];
+      { date: null, description: 'الإجمالي', reference: '', details: '', debit: s.total_debit, credit: s.total_credit, balance: '', _class: 'sum' },
+      { date: null, description: `الرصيد الحالي (${s.closing_side})`, reference: '', details: '', debit: '', credit: '', balance: s.closing_balance, _class: 'close' }];
     blocks.push({ kind: 'table', title: `العملة: ${CURRENCY_AR[s.currency] || s.currency} (${s.currency})`,
       columns: [{ key: 'date', label: 'التاريخ', fmt: 'date', align: 'center' }, { key: 'description', label: 'البيان' }, { key: 'reference', label: 'المرجع' },
+        { key: 'details', label: 'التفاصيل' },
         { key: 'debit', label: 'مدين', fmt: 'money' }, { key: 'credit', label: 'دائن', fmt: 'money' }, { key: 'balance', label: 'الرصيد', fmt: 'money' }], rows });
     const b = sum.balances[s.currency];
     if (b && b.sales !== undefined) {

@@ -75,17 +75,17 @@ export default function AccountingAudit() {
                 <div key={s.currency} className="card mt-2">
                   <h4>العملة: {s.currency}</h4>
                   <div className="table-container"><table>
-                    <thead><tr><th>التاريخ</th><th>البيان</th><th>المرجع</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead>
+                    <thead><tr><th>التاريخ</th><th>البيان</th><th>المرجع</th><th>التفاصيل</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead>
                     <tbody>
-                      <tr style={{ fontWeight: 'bold' }}><td /><td>الرصيد الافتتاحي</td><td /><td /><td /><td>{fmt(s.opening_balance)}</td></tr>
+                      <tr style={{ fontWeight: 'bold' }}><td /><td>الرصيد الافتتاحي</td><td /><td /><td /><td /><td>{fmt(s.opening_balance)}</td></tr>
                       {s.rows.map((r) => (
                         <tr key={r.id} style={r.is_reversal ? { color: '#c62828' } : undefined}>
-                          <td>{String(r.date).slice(0, 10)}</td><td>{r.description}{r.reason ? ` — ${r.reason}` : ''}</td><td>{r.reference || r.order_number || '—'}</td>
+                          <td>{String(r.date).slice(0, 10)}</td><td>{r.description}{r.reason ? ` — ${r.reason}` : ''}</td><td>{r.reference || r.order_number || '—'}</td><td style={{ fontSize: 12, minWidth: 220 }}>{r.details_text || ''}</td>
                           <td>{r.debit === '0.00' ? '' : fmt(r.debit)}</td><td>{r.credit === '0.00' ? '' : fmt(r.credit)}</td><td>{fmt(r.balance)}</td>
                         </tr>
                       ))}
-                      <tr style={{ fontWeight: 'bold' }}><td colSpan="3">الإجمالي</td><td>{fmt(s.total_debit)}</td><td>{fmt(s.total_credit)}</td><td /></tr>
-                      <tr style={{ fontWeight: 'bold', background: '#f6f6f6' }}><td colSpan="5">الرصيد الختامي ({s.closing_side})</td><td>{fmt(s.closing_balance)} {s.currency}</td></tr>
+                      <tr style={{ fontWeight: 'bold' }}><td colSpan="4">الإجمالي</td><td>{fmt(s.total_debit)}</td><td>{fmt(s.total_credit)}</td><td /></tr>
+                      <tr style={{ fontWeight: 'bold', background: '#f6f6f6' }}><td colSpan="6">الرصيد الختامي ({s.closing_side})</td><td>{fmt(s.closing_balance)} {s.currency}</td></tr>
                     </tbody>
                   </table></div>
                 </div>
