@@ -39,6 +39,11 @@ jobs:
           cd mobile
           flutter create --platforms=android --org com.alghouli --project-name alghouli_app .
 
+      - name: Enable core library desugaring (for flutter_local_notifications)
+        run: |
+          python3 scripts/enable_desugaring.py mobile
+          grep -nE "Desugaring|desugar" mobile/android/app/build.gradle* || true
+
       - name: Set app name (Arabic)
         run: |
           cd mobile
