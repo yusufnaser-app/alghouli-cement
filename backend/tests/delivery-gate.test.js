@@ -11,11 +11,11 @@ const stub = (rel, exports) => {
 const tick = () => new Promise((r) => setImmediate(r));
 
 // بيئة وهمية: حالة مشتركة + قفل صفوف FOR UPDATE يُحرَّر عند COMMIT/ROLLBACK (يحاكي PostgreSQL)
-const setup = ({ dest = {}, fax = {}, pendingN = 0 } = {}) => {
+const setup = ({ dest = {}, fax = {}, pendingN = 0, destCount = 1 } = {}) => {
   const st = {
     dest: { id: 'd1', fax_id: 'f1', status: 'PENDING', destination_type: 'trader', trader_id: 't1', quantity: '100', unit: 'bag', fulfills_order_id: null, ...dest },
     fax: { id: 'f1', status: 'READY_FOR_TRANSIT', is_managed: true, driver_id: 'dr1', order_id: null, ...fax },
-    orders: 0, pendingN, sqls: [],
+    orders: 0, pendingN, destCount, sqls: [],
   };
   const locks = new Map();
   const acquire = (key, owner) => new Promise((resolve) => {
@@ -39,6 +39,7 @@ const setup = ({ dest = {}, fax = {}, pendingN = 0 } = {}) => {
         if (/^(COMMIT|ROLLBACK)/.test(s)) { release(owner); return { rows: [] }; }
         if (/pg_advisory_xact_lock/.test(s)) return { rows: [] };
         if (/MAX\(CAST/.test(s)) return { rows: [{ max_num: st.orders }] };
+        if (s.includes("COUNT(*)::int AS n FROM delivery_destinations WHERE fax_id = $1 AND status <> 'CANCELLED'")) return { rows: [{ n: st.destCount }] };
         if (/FROM delivery_destinations d JOIN loading_faxes f/.test(s)) {
           if (/FOR UPDATE OF d, f/.test(s)) await acquire('d:' + params[0], owner);
           return { rows: [{ ...st.dest, fax_number: 'FX-1', driver_id: st.fax.driver_id, fax_order_id: null, factory_id: 's1', fax_status: st.fax.status, fax_is_managed: st.fax.is_managed }] };
@@ -157,10 +158,15 @@ test('14) driverMarkDelivered مع وجهات PENDING → PENDING_DESTINATIONS',
   assert.ok(e.logs[0].includes('ROLLBACK'));
 });
 
-test('15) driverMarkDelivered على فاكس تاجر USED بلا وجهات معلّقة → ينجح', async () => {
-  const e = setup({ fax: { status: 'USED', is_managed: false } });
+test('15) driverMarkDelivered على فاكس تاجر USED بوجهة واحدة على الأقل → ينجح', async () => {
+  const e = setup({ fax: { status: 'USED', is_managed: false }, destCount: 1 });
   const r = await e.fax.driverMarkDelivered('f1', 'u-ok');
   assert.strictEqual(r.ok, true); assert.ok(e.logs[0].includes('COMMIT'));
+});
+
+test('15b) driverMarkDelivered بلا أي وجهة → NO_DESTINATIONS (لا تسليم قبل تحديد الوجهات)', async () => {
+  const e = setup({ fax: { status: 'USED', is_managed: false }, destCount: 0 });
+  await rejectsWith(e.fax.driverMarkDelivered('f1', 'u-ok'), { code: 'NO_DESTINATIONS' });
 });
 
 test('16) driverMarkDelivered على فاكس مؤسسة في USED → FAX_NOT_READY_FOR_DELIVERY', async () => {

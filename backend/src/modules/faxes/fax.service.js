@@ -487,19 +487,55 @@ module.exports = {
 // السائق لقيود مالية غير مكتملة. استُبدلتا بالكامل بـ setRouteAndTransport() أدناه
 // وهي المسار الوحيد المعتمد الآن عبر PATCH /faxes/:id/route-transport.
 
-const enterFactory = async (faxId, driverUserId) => {
-  const r = await query(
-    `UPDATE loading_faxes SET factory_entered_at = NOW(), updated_at = NOW()
-     WHERE id = $1 AND driver_id = (SELECT id FROM drivers WHERE user_id = $2)
-       AND status IN ('APPROVED', 'ISSUED') AND factory_entered_at IS NULL RETURNING *`,
-    [faxId, driverUserId]
+/**
+ * السائق يحمل فاكسًا واحدًا فقط في كل لحظة: لا دخول مصنع ولا تحميل وله فاكس آخر
+ * في المصنع (معتمد ودخل) أو قيد التحميل/الطريق (USED/READY_FOR_TRANSIT).
+ */
+const assertDriverFree = async (client, driverUserId, faxId) => {
+  const r = await client.query(
+    `SELECT f.id, f.fax_number
+     FROM loading_faxes f JOIN drivers d ON d.id = f.driver_id
+     WHERE d.user_id = $1 AND f.id <> $2
+       AND (f.status IN ('USED', 'READY_FOR_TRANSIT')
+            OR (f.status IN ('APPROVED', 'ISSUED') AND f.factory_entered_at IS NOT NULL))
+     LIMIT 1`,
+    [driverUserId, faxId]
   );
-  if (r.rows.length === 0) {
-    const err = new Error('لا يمكن تسجيل الدخول');
-    err.status = 400;
-    throw err;
+  if (r.rows.length) {
+    const b = r.rows[0];
+    const e = new Error(`السائق لديه فاكس قائم (${b.fax_number || b.id}) — أنهِ الرحلة الحالية أولًا`);
+    e.status = 409;
+    e.code = 'DRIVER_BUSY';
+    throw e;
   }
-  return r.rows[0];
+};
+
+const enterFactory = async (faxId, driverUserId) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // قفل صف السائق يمنع دخول فاكسين متزامنين لنفس السائق
+    await client.query(`SELECT id FROM drivers WHERE user_id = $1 FOR UPDATE`, [driverUserId]);
+    await assertDriverFree(client, driverUserId, faxId);
+    const r = await client.query(
+      `UPDATE loading_faxes SET factory_entered_at = NOW(), updated_at = NOW()
+       WHERE id = $1 AND driver_id = (SELECT id FROM drivers WHERE user_id = $2)
+         AND status IN ('APPROVED', 'ISSUED') AND factory_entered_at IS NULL RETURNING *`,
+      [faxId, driverUserId]
+    );
+    if (r.rows.length === 0) {
+      const err = new Error('لا يمكن تسجيل الدخول');
+      err.status = 400;
+      throw err;
+    }
+    await client.query('COMMIT');
+    return r.rows[0];
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
 };
 
 const recordLoading = async (faxId, loadedQty, userId) => {
@@ -860,6 +896,10 @@ const driverConfirmLoading = async (faxId, driverUserId, loadedQty, notes) => {
       err.status = 403;
       throw err;
     }
+
+    // قفل صف السائق + فحص أنه لا يحمل فاكسًا آخر (منع التحميل المزدوج)
+    await client.query(`SELECT id FROM drivers WHERE user_id = $1 FOR UPDATE`, [driverUserId]);
+    await assertDriverFree(client, driverUserId, faxId);
 
     if (!['ISSUED', 'APPROVED'].includes(fax.status)) {
       const err = new Error('لا يمكن تسجيل التحميل في هذه الحالة');
@@ -1307,6 +1347,16 @@ const driverMarkDelivered = async (faxId, userId) => {
 
     // A2: بوابة الحالة + رفض الإغلاق مع وجهات معلّقة (قفل الفاكس أعلاه يمنع الإغلاق المزدوج)
     assertFaxDeliverable(fax);
+    // لا يُغلق فاكس بلا وجهات أصلًا (فحص المعلّقة وحده يمر إن لم توجد وجهات)
+    const nd = await client.query(
+      `SELECT COUNT(*)::int AS n FROM delivery_destinations WHERE fax_id = $1 AND status <> 'CANCELLED'`,
+      [faxId]
+    );
+    if (!nd.rows[0] || nd.rows[0].n === 0) {
+      const e = new Error('لم تُحدَّد وجهات لهذا الفاكس بعد — لا يمكن إنهاء الرحلة');
+      e.status = 409; e.code = 'NO_DESTINATIONS';
+      throw e;
+    }
     // B: فاكس التاجر وجهته الوحيدة هي طلبه نفسه — زر "تأكيد التسليم" القديم يُغلقها تلقائيًا
     // (وجهات أخرى معلّقة تبقى تُرفض أدناه).
     if (!isInstitutionFax(fax) && fax.order_id) {
