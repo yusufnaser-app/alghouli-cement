@@ -16,8 +16,19 @@ class DriverService {
   }
 
   // طلب فاكس جديد
+  Future<List<Map<String, dynamic>>> products() async {
+    try {
+      final res = await _client.get('/products');
+      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+
+  // طلب فاكس جديد (الفاكس صنف واحد من مصنعه)
   Future<Map<String, dynamic>> requestFax({
     required String factoryId,
+    required String productId,
     required String vehicleId,
     required double quantity,
     String? orderId,
@@ -26,6 +37,7 @@ class DriverService {
     try {
       final res = await _client.post('/faxes/request', data: {
         'factoryId': factoryId,
+        'productId': productId,
         'vehicleId': vehicleId,
         'quantity': quantity,
         if (orderId != null) 'orderId': orderId,

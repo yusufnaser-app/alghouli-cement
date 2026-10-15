@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/widgets/primary_button.dart';
 import '../../data/driver_service.dart';
+import '../../../../core/receipts/receipt.dart';
 
 class RequestFaxScreen extends StatefulWidget {
   const RequestFaxScreen({super.key});
@@ -21,6 +22,8 @@ class _RequestFaxScreenState extends State<RequestFaxScreen> {
   Map<String, dynamic>? _profile;
   String? _factoryId;
   String? _vehicleId;
+  String? _productId;
+  List<Map<String, dynamic>> _products = [];
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -47,11 +50,13 @@ class _RequestFaxScreenState extends State<RequestFaxScreen> {
       final factories = await _service.factories();
       final vehicles = await _service.vehicles();
       final profile = await _service.myProfile();
+      final products = await _service.products();
       if (!mounted) return;
       setState(() {
         _factories = factories;
         _myVehicles = vehicles;
         _profile = profile;
+        _products = products;
         if (_myVehicles.isNotEmpty) {
           _vehicleId = _myVehicles.first['id'];
         }
@@ -64,6 +69,15 @@ class _RequestFaxScreenState extends State<RequestFaxScreen> {
       if (mounted) setState(() => _loading = false);
     }
   }
+
+  List<Map<String, dynamic>> _productsOfFactory() =>
+      _products.where((p) => p['source_id']?.toString() == _factoryId).toList();
+
+  String _factoryName() =>
+      _factories.firstWhere((f) => f['id'] == _factoryId, orElse: () => <String, dynamic>{})['name_ar']?.toString() ?? '—';
+
+  String _productName() =>
+      _products.firstWhere((p) => p['id']?.toString() == _productId, orElse: () => <String, dynamic>{})['name_ar']?.toString() ?? '—';
 
   Future<void> _submit() async {
     if (_factoryId == null) {
@@ -80,27 +94,39 @@ class _RequestFaxScreenState extends State<RequestFaxScreen> {
       return;
     }
 
+    if (_productId == null) {
+      setState(() => _error = 'اختر الصنف');
+      return;
+    }
+
     setState(() {
       _saving = true;
       _error = null;
     });
 
     try {
-      await _service.requestFax(
+      final fax = await _service.requestFax(
         factoryId: _factoryId!,
+        productId: _productId!,
         vehicleId: _vehicleId!,
         quantity: qty,
         notes: _notesController.text.trim(),
       );
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✅ تم إرسال طلب الفاكس — سيصلك إشعار بعد الاعتماد'),
-          backgroundColor: AppColors.success,
-          duration: Duration(seconds: 4),
-        ),
+      await showReceiptSheet(
+        context,
+        title: 'طلب فاكس',
+        fileName: 'فاكس_${fax['fax_number'] ?? ''}',
+        rows: [
+          ReceiptRow('رقم الفاكس', '${fax['fax_number'] ?? '—'}'),
+          ReceiptRow('المصنع', _factoryName()),
+          ReceiptRow('الصنف', _productName()),
+          ReceiptRow('الكمية', '${qty.toStringAsFixed(0)} كيس'),
+          const ReceiptRow('الحالة', 'بانتظار الاعتماد'),
+        ],
       );
+      if (!mounted) return;
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
@@ -204,7 +230,28 @@ class _RequestFaxScreenState extends State<RequestFaxScreen> {
                         child: Text(f['name_ar'] ?? ''),
                       );
                     }).toList(),
-                    onChanged: (v) => setState(() => _factoryId = v),
+                    onChanged: (v) => setState(() {
+                      _factoryId = v;
+                      _productId = null;
+                    }),
+                  ),
+                  const SizedBox(height: 16),
+
+                  const Text('الصنف *', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: _productId,
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.inventory_2),
+                      hintText: 'اختر الصنف',
+                    ),
+                    items: _productsOfFactory()
+                        .map((p) => DropdownMenuItem<String>(
+                              value: p['id'].toString(),
+                              child: Text(p['name_ar']?.toString() ?? ''),
+                            ))
+                        .toList(),
+                    onChanged: _factoryId == null ? null : (v) => setState(() => _productId = v),
                   ),
                   const SizedBox(height: 16),
 
