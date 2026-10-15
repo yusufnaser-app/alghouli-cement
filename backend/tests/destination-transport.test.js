@@ -10,7 +10,9 @@ const stub = (rel, exports) => {
 
 const D1 = '11111111-1111-4111-8111-111111111111';
 const D2 = '22222222-2222-4222-8222-222222222222';
-const dest = (o = {}) => ({ destinationType: 'trader', traderId: D1, quantity: 100, unit: 'bag', governorate: 'صنعاء', ...o });
+const P1 = '33333333-3333-4333-8333-333333333333';
+const S1 = '44444444-4444-4444-8444-444444444444';
+const dest = (o = {}) => ({ destinationType: 'trader', traderId: D1, productId: P1, sourceId: S1, unitPrice: 1500, quantity: 100, unit: 'bag', governorate: 'صنعاء', ...o });
 
 // يبني بيئة وهمية: log لكل استعلام، applyCalls لاستدعاءات applyTransportAndRoute، pushes للإشعارات
 const setup = (fax, { destRows = null } = {}) => {
@@ -25,6 +27,10 @@ const setup = (fax, { destRows = null } = {}) => {
       if (/DELETE FROM delivery_destinations/.test(sql)) return { rows: [] };
       if (/FROM customers c JOIN users/.test(sql)) return { rows: [{ id: params[0], governorate: 'ذمار', area: null, default_address: null, full_name: 'ت', phone: '7' }] };
       if (/INSERT INTO delivery_destinations/.test(sql)) return { rows: [{ id: 'x' }] };
+      if (/FROM products WHERE id/.test(sql)) return { rows: [{ packaging_type: 'bagged' }] };
+      if (/INSERT INTO orders/.test(sql)) return { rows: [{ id: 'o1', order_number: 'GHO-1', customer_id: params[1], subtotal: '150000.00', currency: 'YER' }] };
+      if (/MAX\(CAST/.test(sql)) return { rows: [{ max_num: 0 }] };
+      if (/pg_advisory/.test(sql)) return { rows: [] };
       if (/SELECT \* FROM delivery_destinations/.test(sql)) return { rows: destRows || [{ governorate: 'صنعاء', area: 'سعوان' }, { governorate: 'ذمار', area: null }] };
       return { rows: [] };
     },

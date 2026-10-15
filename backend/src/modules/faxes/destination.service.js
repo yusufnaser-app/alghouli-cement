@@ -1,6 +1,10 @@
 'use strict';
 const { pool, query } = require('../../config/db');
 const { toMinor } = require('../accounting/accounting.engine');
+const engine = require('../accounting/accounting.engine');
+const ledgerCore = require('../accounting/ledger.core');
+const { calculatePrice } = require('../products/products.service');
+const { getCustomerProductPrice } = require('../orders/transport.service');
 const { sendPushNotification } = require('../../services/fcm.service');
 const { generateOrderNumber } = require('../../utils/number-generator');
 const { assertFaxDeliverable } = require('./delivery-gate');
@@ -23,9 +27,103 @@ const listDestinations = async (faxId) => {
   return r.rows;
 };
 
-const replaceDestinations = async (client, faxId, destinations, userId) => {
+/**
+ * يقترح سعر الوحدة للتاجر: سعره الخاص أولًا، ثم قائمة الأسعار حسب نوع العميل والكمية.
+ * يُحوَّل بين الكيس والطن إن اختلفت وحدة التسعير. الإدارة تستطيع تعديله قبل الحفظ.
+ */
+const suggestDestinationPrice = async (traderCustomerId, productId, quantity, unit) => {
+  const q = Number(quantity) || 0;
+  const u = unit === 'ton' ? 'ton' : 'bag';
+  const cust = await query(`SELECT customer_type FROM customers WHERE id = $1`, [traderCustomerId]);
+  if (!cust.rows.length) return null;
+  const special = await getCustomerProductPrice(traderCustomerId, productId, q);
+  if (special !== null && special > 0) {
+    return { price: Math.round(special * 100) / 100, unit: u, source: 'customer_price' };
+  }
+  const std = await calculatePrice(productId, cust.rows[0].customer_type, q);
+  if (!std || !(Number(std.price) > 0)) return null;
+  const pu = std.pricing_unit === 'ton' ? 'ton' : 'bag';
+  let price = Number(std.price);
+  if (pu !== u) price = pu === 'ton' ? price / 20 : price * 20;
+  return { price: Math.round(price * 100) / 100, unit: u, source: 'price_list', list: std.price_list_name || null };
+};
+
+/**
+ * طلب تلقائي لوجهة تاجر بلا طلب: يُسعَّر بسعر الوجهة (لكل وحدة الوجهة) ويُرتبط بها.
+ * يُنشأ مرة واحدة عند حفظ الوجهة، ويُقيَّد بيعه في حساب التاجر عند التسليم.
+ */
+const createAutoOrderForDestination = async (client, p) => {
+  const prod = await client.query(`SELECT packaging_type FROM products WHERE id = $1`, [p.productId]);
+  if (!prod.rows.length) throw httpError('الصنف غير موجود', 404, 'PRODUCT_NOT_FOUND');
+  const subtotal = engine.fromMinor(engine.divRound(engine.toMinor(p.quantity) * engine.toMinor(p.unitPrice), 100));
+  const orderNumber = await generateOrderNumber(client);
+  const o = await client.query(
+    `INSERT INTO orders (order_number, customer_id, status, source, currency, subtotal, discount_amount, shipping_amount,
+       total_amount, paid_amount, remaining_amount, notes, created_by, delivery_type, transport_beneficiary, auto_for_destination)
+     VALUES ($1, $2, 'PREPARING', 'admin_destination', 'YER', $3, 0, 0, $3, 0, $3, $4, $5, 'alghouli_delivery', 'institution', TRUE)
+     RETURNING id, order_number, customer_id, subtotal, currency`,
+    [orderNumber, p.customerId, subtotal, `طلب تلقائي من وجهة فاكس ${p.faxNumber || ''} — ${p.quantity} ${p.unit}`, p.userId]
+  );
+  const order = o.rows[0];
   await client.query(
-    `DELETE FROM delivery_destinations WHERE fax_id = $1 AND status = 'PENDING' AND fulfills_order_id IS NULL`,
+    `INSERT INTO order_items (order_id, product_id, source_id, packaging_type, quantity, unit, unit_price, discount, line_total)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8)`,
+    [order.id, p.productId, p.sourceId, prod.rows[0].packaging_type || null, p.quantity, p.unit, p.unitPrice, subtotal]
+  );
+  await client.query(
+    `INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
+     VALUES ($1, NULL, 'PREPARING', $2, 'طلب تلقائي من وجهة فاكس')`,
+    [order.id, p.userId]
+  );
+  // إشعار التاجر بالتفاصيل المطلوبة: الصنف والكمية والسعر والمطلوب
+  const info = await client.query(
+    `SELECT c.user_id, p.name_ar AS product_name FROM customers c, products p WHERE c.id = $1 AND p.id = $2`,
+    [p.customerId, p.productId]
+  );
+  if (info.rows[0] && info.rows[0].user_id) {
+    const unitAr = p.unit === 'ton' ? 'طن' : 'كيس';
+    await client.query(
+      `INSERT INTO notifications (user_id, title_ar, body_ar, type, reference_type, reference_id)
+       VALUES ($1, 'شحنة جديدة لحسابك', $2, 'ORDER_CREATED', 'orders', $3)`,
+      [info.rows[0].user_id,
+        `شحنة أسمنت ${info.rows[0].product_name || ''}، عدد ${p.quantity} ${unitAr}، السعر ${p.unitPrice} ر.ي للوحدة، الإجمالي ${subtotal} ر.ي — يرجى السداد`,
+        order.id]
+    );
+  }
+  return order;
+};
+
+/** يرحّل بيع الوجهة التلقائية إلى حساب التاجر. مرة واحدة فقط (idempotency). */
+const postDestinationSale = async (client, order, dest, userId) => {
+  await ledgerCore.postCustomerEntry(client, {
+    customerId: order.customer_id,
+    orderId: order.id,
+    currency: order.currency || 'YER',
+    debit: order.subtotal,
+    credit: 0,
+    transactionType: 'actual_sale',
+    description: `بيع: ${dest.quantity} ${dest.unit === 'ton' ? 'طن' : 'كيس'} — فاكس ${dest.fax_number || ''}`,
+    sourceType: 'destination',
+    sourceId: dest.id,
+    idempotencyKey: `dest-sale:${dest.id}`,
+    createdBy: userId,
+  });
+};
+
+const replaceDestinations = async (client, faxId, destinations, userId) => {
+  // صنف الفاكس ومصنعه: الوجهة ترث الصنف (الفاكس صنف واحد)
+  const faxRow = (await client.query(`SELECT factory_id, product_id FROM loading_faxes WHERE id = $1`, [faxId])).rows[0] || {};
+  // الطلبات التلقائية للوجهات المعلّقة تُلغى (لم تُسلَّم بعد)، ثم تُحذف وجهاتها
+  await client.query(
+    `UPDATE orders SET status = 'CANCELLED', updated_at = NOW()
+     WHERE auto_for_destination = TRUE AND status = 'PREPARING'
+       AND id IN (SELECT fulfills_order_id FROM delivery_destinations
+                  WHERE fax_id = $1 AND status = 'PENDING' AND fulfills_order_id IS NOT NULL)`,
+    [faxId]
+  );
+  await client.query(
+    `DELETE FROM delivery_destinations WHERE fax_id = $1 AND status = 'PENDING'
+       AND (fulfills_order_id IS NULL OR fulfills_order_id IN (SELECT id FROM orders WHERE auto_for_destination = TRUE))`,
     [faxId]
   );
 
@@ -53,6 +151,23 @@ const replaceDestinations = async (client, faxId, destinations, userId) => {
       warehouseInfo = w.rows[0];
     }
 
+    // وجهة تاجر بلا طلب: تتطلب الصنف والمصنع والسعر، ويُنشأ لها طلب تلقائي بعد الإدراج
+    if (d.destinationType === 'trader') {
+      if (!d.productId) d.productId = faxRow.product_id || null;
+      if (faxRow.product_id && d.productId !== faxRow.product_id) {
+        throw httpError('الصنف لا يطابق صنف الفاكس', 422, 'PRODUCT_MISMATCH');
+      }
+      if (!d.sourceId) d.sourceId = faxRow.factory_id || null;
+    }
+    // السعر المقترح تلقائيًا إن لم تُدخله الإدارة (تظهر قيمته للإدارة قبل الحفظ عبر نقطة الاقتراح)
+    if (d.destinationType === 'trader' && traderInfo && d.productId && !(Number(d.unitPrice) > 0)) {
+      const sug = await suggestDestinationPrice(traderInfo.id, d.productId, d.quantity, d.unit || 'bag');
+      if (sug) d.unitPrice = sug.price;
+    }
+    if (d.destinationType === 'trader' && !!traderInfo && (!d.productId || !d.sourceId || !(Number(d.unitPrice) > 0))) {
+      throw httpError('وجهة التاجر تتطلب الصنف والمصنع والسعر (لكل وحدة الوجهة)', 422, 'TRADER_DESTINATION_NEEDS_PRICE');
+    }
+
     const res = await client.query(`
       INSERT INTO delivery_destinations
         (fax_id, destination_type, trader_id, warehouse_id,
@@ -73,7 +188,23 @@ const replaceDestinations = async (client, faxId, destinations, userId) => {
       d.contactName || traderInfo?.full_name || warehouseInfo?.manager_name || null,
       i, userId,
     ]);
-    inserted.push(res.rows[0]);
+    const row = res.rows[0];
+    if (d.destinationType === 'trader' && traderInfo) {
+      const fax = await client.query(`SELECT fax_number FROM loading_faxes WHERE id = $1`, [faxId]);
+      const order = await createAutoOrderForDestination(client, {
+        customerId: traderInfo.id,
+        productId: d.productId,
+        sourceId: d.sourceId,
+        quantity: d.quantity,
+        unit: d.unit || 'bag',
+        unitPrice: d.unitPrice,
+        faxNumber: fax.rows[0] && fax.rows[0].fax_number,
+        userId,
+      });
+      await client.query(`UPDATE delivery_destinations SET fulfills_order_id = $1 WHERE id = $2`, [order.id, row.id]);
+      row.fulfills_order_id = order.id;
+    }
+    inserted.push(row);
   }
   return inserted;
 };
@@ -302,6 +433,14 @@ const deliverDestination = async (destinationId, userId) => {
       await client.query(`INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, reason)
                           VALUES ($1, NULL, 'DELIVERED', $2, $3)`,
         [dest.fulfills_order_id, userId, `تسليم الوجهة من فاكس ${dest.fax_number || ''}`]);
+      // وجهة تاجر بطلب تلقائي: يُرحَّل بيعها إلى حساب التاجر (مرة واحدة)
+      const ord = await client.query(
+        `SELECT id, customer_id, subtotal, currency, auto_for_destination FROM orders WHERE id = $1`,
+        [dest.fulfills_order_id]
+      );
+      if (ord.rows[0] && ord.rows[0].auto_for_destination) {
+        await postDestinationSale(client, ord.rows[0], dest, userId);
+      }
     } else if (dest.destination_type === 'trader' && dest.trader_id) {
       const orderNumber = await generateOrderNumber(client);
 
@@ -409,4 +548,4 @@ const listTraders = async () => {
   return r.rows;
 };
 
-module.exports = { listDestinations, replaceDestinations, replaceDestinationsAndTransport, deliverDestination, listWarehouses, listTraders };
+module.exports = { listDestinations, replaceDestinations, replaceDestinationsAndTransport, deliverDestination, listWarehouses, listTraders, suggestDestinationPrice };

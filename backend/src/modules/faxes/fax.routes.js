@@ -36,6 +36,7 @@ router.patch('/:id/cancel', requirePermission('loading.update'), controller.canc
 // ═══ Multi-Drop Destinations ═══
 router.get('/warehouses/list', requireRoles('admin','transport','sales'), destinations.warehouses);
 router.get('/traders/list', requireRoles('admin','transport','sales'), destinations.traders);
+router.get('/destinations/price-suggestion', requireRoles('admin','transport','sales'), destinations.suggestPrice);
 router.get('/:id/destinations', destinations.list);
 router.put('/:id/destinations', requireRoles('admin','transport','sales'), destinations.replace);
 router.patch('/:id/destinations/:destId/deliver', requireRoles('driver'), destinations.deliver);

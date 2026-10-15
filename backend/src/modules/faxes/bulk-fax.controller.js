@@ -10,6 +10,7 @@ const bulkSchema = z.object({
     driverName: z.string().optional(),
     vehicleId: z.string().uuid(),
     factoryId: z.string().uuid(),
+    productId: z.string().uuid(),
     quantity: z.number().positive(),
     notes: z.string().max(500).optional(),
   })).min(1),

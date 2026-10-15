@@ -76,6 +76,8 @@ const createFaxFromOrder = async (client, orderId, createdByUserId) => {
   err.code = 'FAX_NOT_READY'; err.status = 409; throw err;
 };
 
+const { assertProductOfFactory } = require('./product-guard');
+
 const requestFax = async (requestedByUserId, data) => {
   const client = await pool.connect();
   try {
@@ -196,6 +198,7 @@ const requestFax = async (requestedByUserId, data) => {
       throw err;
     }
 
+    await assertProductOfFactory(client, data.productId, data.factoryId);
     const isManaged = driverType !== 'trader_driver';
     const faxNumber = await generateFaxNumber(client); // ✅ توليد تلقائي
 
@@ -204,14 +207,14 @@ const requestFax = async (requestedByUserId, data) => {
        (order_id, driver_id, vehicle_id, factory_id, requested_quantity,
         status, requested_at, notes, created_by,
         requested_by_user_id, trader_id, driver_type_snapshot, is_managed_by_institution,
-        fax_number)
-       VALUES ($1,$2,$3,$4,$5,'REQUESTED',NOW(),$6,$7,$8,$9,$10,$11,$12)
+        fax_number, product_id)
+       VALUES ($1,$2,$3,$4,$5,'REQUESTED',NOW(),$6,$7,$8,$9,$10,$11,$12,$13)
        RETURNING *`,
       [
         data.orderId || null, driverId, data.vehicleId, data.factoryId,
         data.quantity, data.notes || null, requestedByUserId,
         requestedByUserId, traderId, driverType, isManaged,
-        faxNumber,
+        faxNumber, data.productId,
       ]
     );
 
@@ -303,6 +306,7 @@ const requestFaxByStaff = async (data, staffUserId) => {
 
     const isManaged = driver.driver_type !== 'trader_driver';
 
+    await assertProductOfFactory(client, data.productId, data.factoryId);
     // توليد رقم الفاكس تلقائياً
     const faxNumber = await generateFaxNumber(client);
 
@@ -313,10 +317,10 @@ const requestFaxByStaff = async (data, staffUserId) => {
            status, requested_at, notes, created_by,
            requested_by_user_id, trader_id, driver_type_snapshot, is_managed_by_institution,
            fax_number, approved_at, issued_at, approved_quantity,
-           delivery_governorate, delivery_area)
+           delivery_governorate, delivery_area, product_id)
         VALUES ($1,$2,$3,$4,$5,'ISSUED',NOW(),$6,$7,$8,$9,$10,$11,
         $12, NOW(), NOW(), $5,
-        $13, $14)
+        $13, $14, $15)
        RETURNING *`,
       [
           data.orderId || null, driver.id, data.vehicleId, data.factoryId,
@@ -325,7 +329,7 @@ const requestFaxByStaff = async (data, staffUserId) => {
           driver.driver_type, isManaged,
           faxNumber,
           data.deliveryGovernorate || null,
-          data.deliveryArea || null,
+          data.deliveryArea || null, data.productId,
         ]
     );
 

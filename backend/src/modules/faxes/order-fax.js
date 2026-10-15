@@ -53,12 +53,12 @@ const createOrderFax = async (client, p) => {
             c.user_id AS customer_user_id, c.governorate AS c_gov, c.area AS c_area, c.default_address,
             u.full_name AS customer_name, u.phone AS customer_phone,
             a.governorate AS a_gov, a.area AS a_area, a.address_text,
-            oi.quantity, oi.unit, oi.source_id
+            oi.quantity, oi.unit, oi.source_id, oi.product_id
      FROM orders o
      JOIN customers c ON c.id = o.customer_id
      JOIN users u ON u.id = c.user_id
      LEFT JOIN customer_addresses a ON a.id = o.address_id
-     LEFT JOIN LATERAL (SELECT quantity, unit, source_id FROM order_items
+     LEFT JOIN LATERAL (SELECT quantity, unit, source_id, product_id FROM order_items
                         WHERE order_id = o.id ORDER BY id ASC LIMIT 1) oi ON TRUE
      WHERE o.id = $1
      FOR UPDATE OF o`,
@@ -128,6 +128,7 @@ const createOrderFax = async (client, p) => {
        gov, area, addressText]
     );
     fax = f.rows[0];
+    if (order.product_id) await client.query(`UPDATE loading_faxes SET product_id = $1 WHERE id = $2`, [order.product_id, fax.id]);
   } catch (err) {
     if (err.code === '23505' && /order_active/.test(err.constraint || err.message || '')) {
       throw httpError('يوجد فاكس نشط لهذا الطلب', 409, 'FAX_ALREADY_EXISTS_FOR_ORDER');

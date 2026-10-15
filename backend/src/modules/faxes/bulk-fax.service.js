@@ -1,3 +1,4 @@
+const { assertProductOfFactory } = require('./product-guard');
 const { pool, query } = require('../../config/db');
 const { queueSms } = require('../../services/sms.service');
 
@@ -112,6 +113,7 @@ const createBulkFaxes = async (items, staffUserId) => {
 
         const isManaged = driver.driver_type !== 'trader_driver';
 
+        await assertProductOfFactory(client, item.productId, item.factoryId);
         // توليد رقم الفاكس
         const faxNumber = await generateFaxNumber(client);
 
@@ -121,16 +123,16 @@ const createBulkFaxes = async (items, staffUserId) => {
            (driver_id, vehicle_id, factory_id, requested_quantity,
             status, requested_at, notes, created_by,
             requested_by_user_id, trader_id, driver_type_snapshot, is_managed_by_institution,
-            fax_number, approved_at, issued_at, approved_quantity)
+            fax_number, approved_at, issued_at, approved_quantity, product_id)
            VALUES ($1,$2,$3,$4,'ISSUED',NOW(),$5,$6,$7,$8,$9,$10,
-                   $11, NOW(), NOW(), $4)
+                   $11, NOW(), NOW(), $4, $12)
            RETURNING id, fax_number`,
           [
             driver.id, item.vehicleId, item.factoryId, item.quantity,
             item.notes || null, staffUserId,
             staffUserId, driver.owner_trader_id || null,
             driver.driver_type, isManaged,
-            faxNumber,
+            faxNumber, item.productId,
           ]
         );
 

@@ -5,12 +5,29 @@ const response = require('../../utils/response');
 const service = require('./destination.service');
 const { loadPermissions } = require('../../middlewares/auth');
 
+const priceSuggestSchema = z.object({
+  traderId: z.string().uuid(),
+  productId: z.string().uuid(),
+  quantity: z.coerce.number().positive(),
+  unit: z.enum(['bag', 'ton']).optional(),
+});
+
+const suggestPrice = asyncHandler(async (req, res) => {
+  const q = priceSuggestSchema.parse(req.query);
+  const s = await service.suggestDestinationPrice(q.traderId, q.productId, q.quantity, q.unit || 'bag');
+  return response.success(res, s || { price: null, source: 'none' }, s ? 'السعر المقترح' : 'لا يوجد سعر لهذا الصنف');
+});
+
 const destinationSchema = z.object({
   destinationType: z.enum(['trader', 'warehouse']),
   traderId: z.string().uuid().optional(),
   warehouseId: z.string().uuid().optional(),
   quantity: z.number().positive(),
   unit: z.enum(['bag', 'ton']).optional(),
+  // وجهة تاجر بلا طلب: الصنف والمصنع وسعر الوحدة (لكل وحدة الوجهة)
+  productId: z.string().uuid().optional(),
+  sourceId: z.string().uuid().optional(),
+  unitPrice: z.number().positive().optional(),
   label: z.string().max(150).optional(),
   governorate: z.string().max(100).optional(),
   area: z.string().max(100).optional(),
@@ -70,4 +87,4 @@ const traders = asyncHandler(async (req, res) => {
   return response.success(res, data, 'التجار');
 });
 
-module.exports = { list, replace, deliver, warehouses, traders };
+module.exports = { list, replace, deliver, warehouses, traders, suggestPrice };
