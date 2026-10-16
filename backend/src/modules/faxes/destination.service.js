@@ -3,6 +3,7 @@ const { pool, query } = require('../../config/db');
 const { toMinor } = require('../accounting/accounting.engine');
 const engine = require('../accounting/accounting.engine');
 const ledgerCore = require('../accounting/ledger.core');
+const { notifyDestinationDelivered } = require('../notifications/notify.service');
 const { calculatePrice } = require('../products/products.service');
 const { getCustomerProductPrice } = require('../orders/transport.service');
 const { sendPushNotification } = require('../../services/fcm.service');
@@ -427,6 +428,8 @@ const deliverDestination = async (destinationId, userId) => {
     let createdOrder = null;
 
     // وجهة مرتبطة بطلب موجود ومدفوع: لا ننشئ طلبًا جديدًا (منع ازدواج الفوترة)
+    // إشعار التاجر والإدارة بالاسم (الصنف والكمية والسائق والمبلغ)
+    await notifyDestinationDelivered(client, dest.id, userId);
     if (dest.fulfills_order_id) {
       await client.query(`UPDATE orders SET status = 'DELIVERED', updated_at = NOW()
                           WHERE id = $1 AND status IN ('PREPARING','LOADED','IN_TRANSIT','PAYMENT_APPROVED')`, [dest.fulfills_order_id]);

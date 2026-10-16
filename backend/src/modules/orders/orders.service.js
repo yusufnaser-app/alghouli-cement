@@ -1,6 +1,7 @@
 const { pool, query } = require('../../config/db');
 const transportService = require('./transport.service');
 const ledgerService = require('../customers/ledger.service');
+const { notifyOrderCreated } = require('../notifications/notify.service');
 const engine = require('../accounting/accounting.engine');
 const { logAudit } = require('../audit/audit.service');
 const ceilingsService = require('../ceilings/ceilings.service');
@@ -257,6 +258,7 @@ const createOrder = async (userId, data) => {
 
     // استثناء معتمد؟ يُستهلك مرة واحدة داخل نفس المعاملة
     await ceilingsService.consumeOverrides(client, ceilingCheck.overrideIds, order.id, userId);
+    await notifyOrderCreated(client, order.id); // إشعار الإدارة بالاسم والصنف والكمية
 
     await client.query('COMMIT');
     return { ...order, ceiling_status: ceilingCheck.status, delivery_type: data.deliveryType, fax_requested: !!data.faxRequested, transport_beneficiary: data.transportBeneficiary || null };
