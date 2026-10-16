@@ -76,7 +76,7 @@ const createFaxFromOrder = async (client, orderId, createdByUserId) => {
   err.code = 'FAX_NOT_READY'; err.status = 409; throw err;
 };
 
-const { assertProductOfFactory } = require('./product-guard');
+const { resolveFaxProduct } = require('./product-guard');
 
 const requestFax = async (requestedByUserId, data) => {
   const client = await pool.connect();
@@ -198,7 +198,7 @@ const requestFax = async (requestedByUserId, data) => {
       throw err;
     }
 
-    await assertProductOfFactory(client, data.productId, data.factoryId);
+    data.productId = await resolveFaxProduct(client, data.productId, data.factoryId);
     const isManaged = driverType !== 'trader_driver';
     const faxNumber = await generateFaxNumber(client); // ✅ توليد تلقائي
 
@@ -306,7 +306,7 @@ const requestFaxByStaff = async (data, staffUserId) => {
 
     const isManaged = driver.driver_type !== 'trader_driver';
 
-    await assertProductOfFactory(client, data.productId, data.factoryId);
+    data.productId = await resolveFaxProduct(client, data.productId, data.factoryId);
     // توليد رقم الفاكس تلقائياً
     const faxNumber = await generateFaxNumber(client);
 

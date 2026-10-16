@@ -33,11 +33,11 @@ test('G21-4) الفاكس بلا صنف مرفوض (PRODUCT_REQUIRED)', async ()
 test('G21-5) طلب السائق والإنشاء الإداري والجماعي يتحققون من الصنف قبل الإدراج', () => {
   const s = read('src/modules/faxes/fax.service.js');
   const req = s.slice(s.indexOf('const requestFax = async'), s.indexOf('const requestFaxByStaff'));
-  assert.ok(req.indexOf('assertProductOfFactory') < req.indexOf('INSERT INTO loading_faxes'));
+  assert.ok(req.indexOf('resolveFaxProduct') < req.indexOf('INSERT INTO loading_faxes'));
   const st = s.slice(s.indexOf('const requestFaxByStaff'));
-  assert.ok(st.indexOf('assertProductOfFactory') < st.indexOf('INSERT INTO loading_faxes'));
+  assert.ok(st.indexOf('resolveFaxProduct') < st.indexOf('INSERT INTO loading_faxes'));
   const b = read('src/modules/faxes/bulk-fax.service.js');
-  assert.ok(b.indexOf('assertProductOfFactory(client, item.productId') < b.indexOf('INSERT INTO loading_faxes'));
+  assert.ok(b.indexOf('resolveFaxProduct(client, item.productId') < b.indexOf('INSERT INTO loading_faxes'));
 });
 
 test('G21-6) الوجهة ترث صنف الفاكس، وتُرفض عند عدم التطابق', () => {
@@ -48,6 +48,27 @@ test('G21-6) الوجهة ترث صنف الفاكس، وتُرفض عند عد�
 });
 
 test('G21-7) المخططات تقبل الصنف (وإلا يُحذف صامتًا)', () => {
-  assert.match(read('src/modules/faxes/fax.controller.js'), /productId: z\.string\(\)\.uuid\(\)/);
-  assert.match(read('src/modules/faxes/bulk-fax.controller.js'), /productId: z\.string\(\)\.uuid\(\)/);
+  assert.match(read('src/modules/faxes/fax.controller.js'), /productId: z\.string\(\)\.uuid\(\)\.optional\(\)/);
+  assert.match(read('src/modules/faxes/bulk-fax.controller.js'), /productId: z\.string\(\)\.uuid\(\)\.optional\(\)/);
+});
+
+test('G24-1) بلا صنف: صنف المصنع الوحيد يُختار تلقائيًا', async () => {
+  const { resolveFaxProduct } = require('../src/modules/faxes/product-guard');
+  const q = { query: async (sql) => {
+    if (/SELECT id FROM products WHERE source_id/.test(sql)) return { rows: [{ id: 'only' }] };
+    return { rows: [] };
+  } };
+  assert.strictEqual(await resolveFaxProduct(q, null, 'f1'), 'only');
+});
+
+test('G24-2) بلا صنف ومصنع له أكثر من صنف ⇒ PRODUCT_REQUIRED', async () => {
+  const { resolveFaxProduct } = require('../src/modules/faxes/product-guard');
+  const q = { query: async () => ({ rows: [{ id: 'a' }, { id: 'b' }] }) };
+  await assert.rejects(resolveFaxProduct(q, null, 'f1'), { code: 'PRODUCT_REQUIRED', status: 422 });
+});
+
+test('G24-3) صنف صريح يُتحقق منه ويُعاد كما هو', async () => {
+  const { resolveFaxProduct } = require('../src/modules/faxes/product-guard');
+  const q = { query: async () => ({ rows: [{ id: 'p1' }] }) };
+  assert.strictEqual(await resolveFaxProduct(q, 'p1', 'f1'), 'p1');
 });

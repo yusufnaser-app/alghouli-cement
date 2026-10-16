@@ -17,4 +17,24 @@ const assertProductOfFactory = async (client, productId, factoryId) => {
   }
 };
 
-module.exports = { assertProductOfFactory };
+/**
+ * يحدد صنف الفاكس: الصنف الصريح إن أُرسل (ويُتحقق من انتمائه للمصنع)،
+ * وإلا صنف المصنع الوحيد النشط. مصنع بأكثر من صنف بدون اختيار ⇒ 422 PRODUCT_REQUIRED.
+ * يحفظ التوافق مع نسخ التطبيق القديمة التي لا ترسل الصنف.
+ */
+const resolveFaxProduct = async (client, productId, factoryId) => {
+  if (productId) {
+    await assertProductOfFactory(client, productId, factoryId);
+    return productId;
+  }
+  const r = await client.query(
+    `SELECT id FROM products WHERE source_id = $1 AND COALESCE(status, 'active') = 'active'`,
+    [factoryId]
+  );
+  if (r.rows.length === 1) return r.rows[0].id;
+  const e = new Error('اختر الصنف لهذا الفاكس (المصنع لديه أكثر من صنف)');
+  e.status = 422; e.code = 'PRODUCT_REQUIRED';
+  throw e;
+};
+
+module.exports = { assertProductOfFactory, resolveFaxProduct };

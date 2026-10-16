@@ -6,7 +6,7 @@ const service = require('./fax.service');
 // ============ Schemas ============
 const requestSchema = z.object({
   factoryId: z.string().uuid(),
-  productId: z.string().uuid(),
+  productId: z.string().uuid().optional(),
   vehicleId: z.string().uuid(),
   quantity: z.number().positive(),
   orderId: z.string().uuid().optional(),
@@ -18,7 +18,7 @@ const staffRequestSchema = z.object({
   driverId: z.string().uuid(),
   vehicleId: z.string().uuid(),
   factoryId: z.string().uuid(),
-  productId: z.string().uuid(),
+  productId: z.string().uuid().optional(),
   quantity: z.number().positive(),
   orderId: z.string().uuid().optional(),
   notes: z.string().max(500).optional(),

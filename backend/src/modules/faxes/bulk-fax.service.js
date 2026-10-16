@@ -1,4 +1,4 @@
-const { assertProductOfFactory } = require('./product-guard');
+const { resolveFaxProduct } = require('./product-guard');
 const { pool, query } = require('../../config/db');
 const { queueSms } = require('../../services/sms.service');
 
@@ -113,7 +113,7 @@ const createBulkFaxes = async (items, staffUserId) => {
 
         const isManaged = driver.driver_type !== 'trader_driver';
 
-        await assertProductOfFactory(client, item.productId, item.factoryId);
+        item.productId = await resolveFaxProduct(client, item.productId, item.factoryId);
         // توليد رقم الفاكس
         const faxNumber = await generateFaxNumber(client);
 
