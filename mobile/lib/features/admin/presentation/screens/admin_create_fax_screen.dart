@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../data/admin_service.dart';
+import '../../../../core/receipts/receipt.dart';
 
 class AdminCreateFaxScreen extends StatefulWidget {
   /// معرّف طلب اختياري — يُملأ تلقائيًا عند الفتح من قائمة التكليف
@@ -42,6 +43,8 @@ class _State extends State<AdminCreateFaxScreen> {
   String? _sourceId;
   String? _driverId;
   String? _vehicleId;
+  String? _productId;
+  List<Map<String, dynamic>> _products = [];
 
   bool _loading = true;
   bool _saving = false;
@@ -79,12 +82,14 @@ class _State extends State<AdminCreateFaxScreen> {
         _service.sources(),
         _service.drivers(),
         _service.vehicles(),
+        _service.products(),
       ]);
       if (mounted) {
         setState(() {
           _sources = results[0];
           _drivers = results[1];
           _vehicles = results[2];
+          _products = results[3] as List<Map<String, dynamic>>;
           _loading = false;
         });
       }
@@ -96,9 +101,16 @@ class _State extends State<AdminCreateFaxScreen> {
     }
   }
 
+  List<Map<String, dynamic>> _productsOfFactory() =>
+      _products.where((p) => p['source_id']?.toString() == _sourceId).toList();
+
   Future<void> _submit() async {
     if (_sourceId == null || _driverId == null || _vehicleId == null) {
       setState(() => _error = 'اختر المصنع والسائق والقاطرة');
+      return;
+    }
+    if (_productId == null && _productsOfFactory().length > 1) {
+      setState(() => _error = 'اختر الصنف');
       return;
     }
     final qty = double.tryParse(_qtyCtrl.text.trim());
@@ -109,8 +121,9 @@ class _State extends State<AdminCreateFaxScreen> {
 
     setState(() { _saving = true; _error = null; });
     try {
-      await _service.createFax(
+      final fax = await _service.createFax(
         factoryId: _sourceId!,
+        productId: _productId,
         driverId: _driverId!,
         vehicleId: _vehicleId!,
         quantity: qty,
@@ -120,9 +133,21 @@ class _State extends State<AdminCreateFaxScreen> {
         deliveryArea: _areaCtrl.text.trim().isEmpty ? null : _areaCtrl.text.trim(),
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ تم إنشاء الفاكس'), backgroundColor: AppColors.success),
+        final factory = _sources.firstWhere((x) => x['id'] == _sourceId, orElse: () => <String, dynamic>{});
+        final product = _products.firstWhere((x) => x['id']?.toString() == _productId, orElse: () => <String, dynamic>{});
+        await showReceiptSheet(
+          context,
+          title: 'إنشاء فاكس',
+          fileName: 'فاكس_${fax['fax_number'] ?? ''}',
+          rows: [
+            ReceiptRow('رقم الفاكس', '${fax['fax_number'] ?? '—'}'),
+            ReceiptRow('المصنع', factory['name_ar']?.toString() ?? '—'),
+            ReceiptRow('الصنف', product['name_ar']?.toString() ?? '—'),
+            ReceiptRow('الكمية', '${qty.toStringAsFixed(0)} كيس'),
+            ReceiptRow('الحالة', '${fax['status'] ?? 'REQUESTED'}'),
+          ],
         );
+        if (!mounted) return;
         Navigator.pop(context, true);
       }
     } catch (e) {
@@ -162,7 +187,22 @@ class _State extends State<AdminCreateFaxScreen> {
                       value: s['id'].toString(),
                       child: Text(s['name_ar']?.toString() ?? s['name']?.toString() ?? '—'),
                     )).toList(),
-                    onChanged: (v) => setState(() => _sourceId = v),
+                    onChanged: (v) => setState(() {
+                      _sourceId = v;
+                      _productId = null;
+                    }),
+                  ),
+                  const SizedBox(height: 16),
+
+                  _lbl('الصنف'),
+                  DropdownButtonFormField<String>(
+                    value: _productId,
+                    decoration: const InputDecoration(prefixIcon: Icon(Icons.inventory_2)),
+                    items: _productsOfFactory().map((p) => DropdownMenuItem(
+                      value: p['id'].toString(),
+                      child: Text(p['name_ar']?.toString() ?? '—'),
+                    )).toList(),
+                    onChanged: _sourceId == null ? null : (v) => setState(() => _productId = v),
                   ),
                   const SizedBox(height: 16),
 

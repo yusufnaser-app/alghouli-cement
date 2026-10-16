@@ -157,8 +157,19 @@ List<Map<String, dynamic>> _asList(dynamic body, String tag) {
     }
   }
 
-  Future<void> createFax({
+  /// كل الأصناف (تُصفّى حسب المصنع في الشاشة).
+  Future<List<Map<String, dynamic>>> products() async {
+    try {
+      final res = await _client.get('/products');
+      return ((res.data['data'] as List?) ?? []).cast<Map<String, dynamic>>();
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+
+  Future<Map<String, dynamic>> createFax({
     required String factoryId,
+    String? productId,
     required String driverId,
     required String vehicleId,
     required double quantity,
@@ -168,8 +179,9 @@ List<Map<String, dynamic>> _asList(dynamic body, String tag) {
     String? deliveryArea,
   }) async {
     try {
-      await _client.post('/faxes/staff/create', data: {
+      final res = await _client.post('/faxes/staff/create', data: {
         'factoryId': factoryId,
+        if (productId != null) 'productId': productId,
         'driverId': driverId,
         'vehicleId': vehicleId,
         'quantity': quantity,
@@ -180,6 +192,7 @@ List<Map<String, dynamic>> _asList(dynamic body, String tag) {
         if (deliveryArea != null && deliveryArea.isNotEmpty)
           'deliveryArea': deliveryArea,
       });
+      return Map<String, dynamic>.from((res.data['data'] as Map?) ?? {});
     } on DioException catch (e) {
       throw Exception(handleApiError(e));
     }
