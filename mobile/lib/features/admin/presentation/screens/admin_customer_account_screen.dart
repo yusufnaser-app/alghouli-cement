@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/documents/document_actions.dart';
 import '../../data/customer_account_service.dart';
+import '../../../../core/receipts/receipt.dart';
 
 
 /// كشف حساب عميل واحد: الملخص والسقوف والحركات، مع طباعة/مشاركة الكشف.
@@ -18,6 +19,7 @@ class AdminCustomerAccountScreen extends StatefulWidget {
 
 class _S extends State<AdminCustomerAccountScreen> {
   final _svc = CustomerAccountService();
+  final _captureKey = GlobalKey();
   Map<String, dynamic>? _summary;
   List<Map<String, dynamic>> _rules = [];
   Map<String, dynamic>? _statement;
@@ -119,6 +121,11 @@ class _S extends State<AdminCustomerAccountScreen> {
                 fileName: 'كشف_${widget.customerName}',
               ),
             ]),
+            IconButton(
+              tooltip: 'مشاركة الكشف كصورة',
+              icon: const Icon(Icons.image_outlined),
+              onPressed: _loading ? null : () => shareWidgetAsImage(_captureKey, 'كشف_${widget.customerName}'),
+            ),
             IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
           ],
         ),
@@ -131,9 +138,43 @@ class _S extends State<AdminCustomerAccountScreen> {
                     child: ListView(
                       padding: const EdgeInsets.all(12),
                       children: [
-                        _summaryCard(),
-                        _rulesCard(),
-                        ..._statementCards(),
+                        RepaintBoundary(
+                          key: _captureKey,
+                          child: ColoredBox(
+                            color: Colors.white,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                                  child: Row(children: [
+                                    Image.asset(
+                                      'assets/images/logo.jpg',
+                                      height: 48,
+                                      errorBuilder: (_, __, ___) => const Icon(Icons.business, color: AppColors.primary),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text('مؤسسة الغولي لتجارة وتسويق الأسمنت',
+                                              style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary)),
+                                          Text('كشف حساب: ${widget.customerName}',
+                                              style: const TextStyle(fontSize: 13)),
+                                        ],
+                                      ),
+                                    ),
+                                  ]),
+                                ),
+                                _summaryCard(),
+                                _rulesCard(),
+                                ..._statementCards(),
+                              ],
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
