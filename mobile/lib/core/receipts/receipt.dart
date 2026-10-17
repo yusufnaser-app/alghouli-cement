@@ -130,9 +130,9 @@ Future<void> showReceiptSheet(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _actionButton(Icons.share_outlined, 'مشاركة',
-                    () => _shareImage(key, fileName ?? title)),
+                    () => shareWidgetAsImage(key, fileName ?? title)),
                 _actionButton(Icons.download_outlined, 'حفظ',
-                    () => _shareImage(key, fileName ?? title)),
+                    () => shareWidgetAsImage(key, fileName ?? title)),
               ],
             ),
           ],
@@ -156,8 +156,8 @@ Widget _actionButton(IconData icon, String label, Future<void> Function() onTap)
   );
 }
 
-/// يلتقط البطاقة كصورة PNG ثم يفتح قائمة المشاركة.
-Future<void> _shareImage(GlobalKey key, String name) async {
+/// يلتقط أي عنصر مُعلَّم بـ RepaintBoundary كصورة PNG ثم يفتح قائمة المشاركة (واتساب وغيره).
+Future<void> shareWidgetAsImage(GlobalKey key, String name) async {
   final boundary = key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
   if (boundary == null) return;
   final image = await boundary.toImage(pixelRatio: 3);

@@ -9,6 +9,7 @@ import 'admin_faxes_screen.dart';
 import 'admin_bulk_fax_screen.dart';
 import 'admin_create_fax_screen.dart';
 import 'admin_customers_screen.dart';
+import 'admin_factory_report_screen.dart';
 import 'admin_drivers_screen.dart';
 import 'admin_users_screen.dart';
 import 'admin_settings_screen.dart';
@@ -207,6 +208,12 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
               label: 'تجار',
               color: AppColors.primary,
               onTap: () => _open(const AdminCustomersScreen()),
+            ),
+            AdminIconTile(
+              icon: Icons.factory,
+              label: 'تقارير المصانع',
+              color: AppColors.info,
+              onTap: () => _open(const AdminFactoryReportScreen()),
             ),
             AdminIconTile(
               icon: Icons.local_shipping,
