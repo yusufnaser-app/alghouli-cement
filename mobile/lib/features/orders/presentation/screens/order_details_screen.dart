@@ -1,3 +1,4 @@
+import '../../../../core/receipts/receipt.dart';
 import '../../../../core/documents/document_actions.dart';
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -93,6 +94,12 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         title: const Text('تفاصيل الطلب'),
         actions: [
           if (_order != null)
+            IconButton(
+              tooltip: 'مشاركة ملخص الطلب كصورة',
+              icon: const Icon(Icons.image_outlined),
+              onPressed: _shareSummary,
+            ),
+          if (_order != null)
             DocumentMenuButton(docs: [
               DocumentSpec(
                 label: 'طلب شراء',
@@ -113,6 +120,35 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
           : _error != null
               ? Center(child: Text(_error!))
               : _buildContent(),
+    );
+  }
+
+  /// يشارك ملخص الطلب كصورة: الصنف والكمية والسعر لكل بند، والإجماليات، والسائق والقاطرة.
+  Future<void> _shareSummary() async {
+    final o = _order;
+    if (o == null) return;
+    final items = ((o['items'] as List?) ?? []).cast<Map>();
+    final itemRows = items
+        .map((i) => ReceiptRow(
+              '${i['product_name'] ?? 'صنف'}',
+              '${i['quantity'] ?? ''} ${i['unit'] == 'ton' ? 'طن' : 'كيس'} × ${i['unit_price'] ?? '—'} = ${i['line_total'] ?? '—'}',
+            ))
+        .toList();
+    await showReceiptSheet(
+      context,
+      title: 'طلب ${o['order_number'] ?? ''}',
+      amount: o['total_amount'] == null ? null : '${o['total_amount']}',
+      fileName: 'طلب_${o['order_number'] ?? ''}',
+      rows: [
+        ReceiptRow('الحالة', '${o['status'] ?? ''}'),
+        ...itemRows,
+        ReceiptRow('الشحن', '${o['shipping_amount'] ?? 0}'),
+        ReceiptRow('الخصم', '${o['discount_amount'] ?? 0}'),
+        ReceiptRow('المدفوع', '${o['paid_amount'] ?? 0}'),
+        ReceiptRow('المتبقي', '${o['remaining_amount'] ?? 0}'),
+        if (o['trader_driver_name'] != null) ReceiptRow('السائق', '${o['trader_driver_name']}'),
+        if (o['trader_truck_plate'] != null) ReceiptRow('اللوحة', '${o['trader_truck_plate']}'),
+      ],
     );
   }
 
