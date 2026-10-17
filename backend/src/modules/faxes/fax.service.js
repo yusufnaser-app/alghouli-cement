@@ -260,12 +260,19 @@ const requestFaxByStaff = async (data, staffUserId) => {
     const driver = d.rows[0];
 
     const v = await client.query(
-      `SELECT id, plate_number FROM vehicles WHERE id = $1`,
+      `SELECT id, plate_number, current_driver_id FROM vehicles WHERE id = $1`,
       [data.vehicleId]
     );
     if (v.rows.length === 0) {
       const err = new Error('القاطرة غير موجودة');
       err.status = 404;
+      throw err;
+    }
+    // القاطرة يجب أن تكون مرتبطة بهذا السائق (السائق قد يملك أكثر من قاطرة)
+    if (v.rows[0].current_driver_id !== driver.id) {
+      const err = new Error('القاطرة غير مرتبطة بهذا السائق');
+      err.status = 422;
+      err.code = 'VEHICLE_NOT_OF_DRIVER';
       throw err;
     }
 
