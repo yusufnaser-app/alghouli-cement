@@ -37,6 +37,7 @@ router.patch('/:id/cancel', requirePermission('loading.update'), controller.canc
 router.get('/warehouses/list', requireRoles('admin','transport','sales'), destinations.warehouses);
 router.get('/traders/list', requireRoles('admin','transport','sales'), destinations.traders);
 router.get('/destinations/price-suggestion', requireRoles('admin','transport','sales'), destinations.suggestPrice);
+router.get('/reports/factory', requireRoles('admin','transport','sales'), require('./factory-report.controller').report);
 router.get('/:id/destinations', destinations.list);
 router.put('/:id/destinations', requireRoles('admin','transport','sales'), destinations.replace);
 router.patch('/:id/destinations/:destId/deliver', requireRoles('driver'), destinations.deliver);
