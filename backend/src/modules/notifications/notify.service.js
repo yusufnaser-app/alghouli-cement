@@ -142,7 +142,51 @@ const notifyPaymentChosen = async (client, orderId, paymentTerms) => {
   return insertNotifications(client, await adminUserIds(client), { ...n, type: 'PAYMENT_CHOSEN' }, 'orders', orderId);
 };
 
+
+/** نصوص حالات الطلب للتاجر (اعتماد، رفض، إلغاء). */
+const buildOrderApprovedTrader = ({ orderNumber, total }) => ({
+  title: 'تم اعتماد طلبك',
+  body: `تم اعتماد طلبك رقم ${orderNumber} بإجمالي ${fmtMoney(total)}، وسيتم تجهيز الشحنة`,
+});
+const buildOrderRejectedTrader = ({ orderNumber, reason }) => ({
+  title: 'تعذّر اعتماد طلبك',
+  body: `تعذّر اعتماد طلبك رقم ${orderNumber}${reason ? `. السبب: ${reason}` : ''}`,
+});
+const buildOrderCancelledTrader = ({ orderNumber, reason }) => ({
+  title: 'تم إلغاء الطلب',
+  body: `تم إلغاء طلبك رقم ${orderNumber}${reason ? `. السبب: ${reason}` : ''}`,
+});
+const buildOrderCancelledAdmin = ({ orderNumber, customerName, reason }) => ({
+  title: 'إلغاء طلب',
+  body: `تم إلغاء الطلب ${orderNumber} الخاص بـ ${customerName || 'العميل'}${reason ? `. السبب: ${reason}` : ''}`,
+});
+
+/** إشعار حدث الطلب: approved | rejected | cancelled (يُرسل للتاجر، والإلغاء يصل للإدارة أيضًا). */
+const notifyOrderEvent = async (client, orderId, kind, reason) => {
+  const o = await client.query(
+    `SELECT o.order_number, o.total_amount, cu.user_id, u.full_name
+     FROM orders o JOIN customers cu ON cu.id = o.customer_id JOIN users u ON u.id = cu.user_id
+     WHERE o.id = $1`, [orderId]);
+  if (!o.rows.length) return 0;
+  const r = o.rows[0];
+  let sent = 0;
+  if (kind === 'approved') {
+    sent += await insertNotifications(client, [r.user_id],
+      { ...buildOrderApprovedTrader({ orderNumber: r.order_number, total: r.total_amount }), type: 'ORDER_APPROVED' }, 'orders', orderId);
+  } else if (kind === 'rejected') {
+    sent += await insertNotifications(client, [r.user_id],
+      { ...buildOrderRejectedTrader({ orderNumber: r.order_number, reason }), type: 'ORDER_REJECTED' }, 'orders', orderId);
+  } else if (kind === 'cancelled') {
+    sent += await insertNotifications(client, [r.user_id],
+      { ...buildOrderCancelledTrader({ orderNumber: r.order_number, reason }), type: 'ORDER_CANCELLED' }, 'orders', orderId);
+    sent += await insertNotifications(client, await adminUserIds(client),
+      { ...buildOrderCancelledAdmin({ orderNumber: r.order_number, customerName: r.full_name, reason }), type: 'ORDER_CANCELLED' }, 'orders', orderId);
+  }
+  return sent;
+};
+
 module.exports = {
+  buildOrderApprovedTrader, buildOrderRejectedTrader, buildOrderCancelledTrader, buildOrderCancelledAdmin, notifyOrderEvent,
   buildOrderPricedTrader, buildPaymentChosenAdmin, notifyOrderPriced, notifyPaymentChosen,
   buildOrderCreatedAdmin, buildDestinationDeliveredTrader, buildDestinationDeliveredAdmin,
   adminUserIds, notifyOrderCreated, notifyDestinationDelivered,

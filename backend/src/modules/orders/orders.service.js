@@ -1,7 +1,7 @@
 const { pool, query } = require('../../config/db');
 const transportService = require('./transport.service');
 const ledgerService = require('../customers/ledger.service');
-const { notifyOrderCreated, notifyOrderPriced, notifyPaymentChosen } = require('../notifications/notify.service');
+const { notifyOrderCreated, notifyOrderPriced, notifyPaymentChosen, notifyOrderEvent } = require('../notifications/notify.service');
 const engine = require('../accounting/accounting.engine');
 const { logAudit } = require('../audit/audit.service');
 const ceilingsService = require('../ceilings/ceilings.service');
@@ -695,6 +695,15 @@ const approveCreditOrder = async (orderId, adminId) => {
     } catch (faxErr) {
       if (faxErr.code !== 'FAX_NOT_READY') throw faxErr;
     }
+    // إشعار الطرف المعني بالحالة الجديدة (غير حرج)
+    try {
+      await client.query('SAVEPOINT order_event_sp');
+      await notifyOrderEvent(client, orderId, 'approved');
+    } catch (notifyErr) {
+      await client.query('ROLLBACK TO SAVEPOINT order_event_sp');
+      console.error('تعذّر إشعار حدث الطلب (تم تجاهله):', notifyErr.message);
+    }
+
     await client.query('COMMIT');
     // محاولة تكليف تلقائي بعد نجاح الاعتماد — الفشل لا يؤثر على الاعتماد
     try { await require('../deliveries/auto-assign.service').tryAutoAssign(orderId, adminId); } catch (e) { console.error('[auto-assign] hook:', e.message); }
@@ -756,6 +765,15 @@ const rejectCreditOrder = async (orderId, adminId, reason) => {
        VALUES ($1, 'PENDING_ADMIN_APPROVAL', 'CREDIT_REJECTED', $2, $3)`,
       [orderId, adminId, `رفض: ${reason}`]
     );
+
+    // إشعار الطرف المعني بالحالة الجديدة (غير حرج)
+    try {
+      await client.query('SAVEPOINT order_event_sp');
+      await notifyOrderEvent(client, orderId, 'rejected', reason);
+    } catch (notifyErr) {
+      await client.query('ROLLBACK TO SAVEPOINT order_event_sp');
+      console.error('تعذّر إشعار حدث الطلب (تم تجاهله):', notifyErr.message);
+    }
 
     await client.query('COMMIT');
     return { id: orderId, status: 'CREDIT_REJECTED' };
@@ -900,6 +918,15 @@ const cancelOrder = async (orderId, userId, reason) => {
        VALUES ($1, $2, 'CANCELLED', $3, $4)`,
       [orderId, order.status, userId, reason || 'إلغاء']
     );
+    // إشعار الطرف المعني بالحالة الجديدة (غير حرج)
+    try {
+      await client.query('SAVEPOINT order_event_sp');
+      await notifyOrderEvent(client, orderId, 'cancelled', reason || null);
+    } catch (notifyErr) {
+      await client.query('ROLLBACK TO SAVEPOINT order_event_sp');
+      console.error('تعذّر إشعار حدث الطلب (تم تجاهله):', notifyErr.message);
+    }
+
     await client.query('COMMIT');
     return { id: orderId, status: 'CANCELLED' };
   } catch (err) {
