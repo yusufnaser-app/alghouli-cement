@@ -1,7 +1,7 @@
 const { pool, query } = require('../../config/db');
 const transportService = require('./transport.service');
 const ledgerService = require('../customers/ledger.service');
-const { notifyOrderCreated } = require('../notifications/notify.service');
+const { notifyOrderCreated, notifyOrderPriced, notifyPaymentChosen } = require('../notifications/notify.service');
 const engine = require('../accounting/accounting.engine');
 const { logAudit } = require('../audit/audit.service');
 const ceilingsService = require('../ceilings/ceilings.service');
@@ -370,17 +370,7 @@ const setOrderPricing = async (orderId, staffUserId, data) => {
     // إشعار العميل بقيمة الطلب (بند 23) — غير حرج: لا يوقف التسعير لو فشل
     try {
       await client.query('SAVEPOINT price_notify_sp');
-      const cust = await client.query(
-        `SELECT u.id AS user_id FROM customers c JOIN users u ON u.id = c.user_id WHERE c.id = $1`,
-        [order.customer_id]
-      );
-      if (cust.rows[0]) {
-        await client.query(
-          `INSERT INTO notifications (user_id, title_ar, body_ar, type, reference_type, reference_id)
-           VALUES ($1, 'تم تحديد قيمة طلبك', $2, 'ORDER_PRICED', 'orders', $3)`,
-          [cust.rows[0].user_id, `إشعار قيمة الطلب رقم ${order.order_number}: ${Number(totalAmount).toLocaleString('en-US')} ${currency}. يرجى اختيار طريقة السداد.`, orderId]
-        );
-      }
+      await notifyOrderPriced(client, orderId);
     } catch (notifyErr) {
       await client.query('ROLLBACK TO SAVEPOINT price_notify_sp');
       console.error('تعذّر إرسال إشعار التسعير (تم تجاهله):', notifyErr.message);
@@ -477,6 +467,15 @@ const choosePaymentMethod = async (orderId, userId, data) => {
        paymentTerms === 'on_account' ? 'اختيار الدفع تحت الحساب' :
        paymentTerms === 'partial' ? 'اختيار دفع جزئي' : `اختيار ${paymentTerms === 'e_wallet' ? 'محفظة إلكترونية' : 'تحويل شبكة'}`]
     );
+
+    // إشعار الإدارة بالتاجر وطريقة الدفع (غير حرج)
+    try {
+      await client.query('SAVEPOINT payment_notify_sp');
+      await notifyPaymentChosen(client, orderId, paymentTerms);
+    } catch (notifyErr) {
+      await client.query('ROLLBACK TO SAVEPOINT payment_notify_sp');
+      console.error('تعذّر إشعار اختيار الدفع (تم تجاهله):', notifyErr.message);
+    }
 
     await client.query('COMMIT');
     return { id: orderId, status: nextStatus, payment_terms: paymentTerms,

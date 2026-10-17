@@ -99,7 +99,51 @@ const notifyDestinationDelivered = async (client, destId, driverUserId) => {
   return sent;
 };
 
+
+const PAYMENT_LABEL = { on_account: 'آجل', network_transfer: 'تحويل شبكة', partial: 'دفع جزئي', e_wallet: 'محفظة إلكترونية', bank_transfer: 'تحويل شبكة', cash: 'نقدًا', credit: 'آجل' };
+
+/** نص إشعار التاجر بتسعير طلبه: كل صنف بكميته وسعره، ثم الإجمالي. */
+const buildOrderPricedTrader = ({ orderNumber, lines, total, currency }) => {
+  const detail = lines.map((l) => `${l.product || 'صنف'} ${fmtQty(l.quantity, l.unit)} × ${fmtMoney(l.unitPrice)}`).join('، ');
+  return {
+    title: 'تم تسعير طلبك',
+    body: `طلبك رقم ${orderNumber}: ${detail}. الإجمالي ${Number(total).toLocaleString('en-US')} ${currency || 'ر.ي'} — اختر طريقة الدفع`,
+  };
+};
+
+/** نص إشعار الإدارة عند اختيار التاجر طريقة الدفع. */
+const buildPaymentChosenAdmin = ({ orderNumber, customerName, paymentTerms, total }) => ({
+  title: 'اختيار طريقة الدفع',
+  body: `${customerName || 'التاجر'} اختار ${PAYMENT_LABEL[paymentTerms] || paymentTerms || 'طريقة دفع'} للطلب ${orderNumber}، الإجمالي ${fmtMoney(total)}`,
+});
+
+/** إشعار التاجر بتسعير طلبه (بالأسماء والأسعار). */
+const notifyOrderPriced = async (client, orderId) => {
+  const o = await client.query(
+    `SELECT o.order_number, o.total_amount, o.currency, cu.user_id
+     FROM orders o JOIN customers cu ON cu.id = o.customer_id WHERE o.id = $1`, [orderId]);
+  if (!o.rows.length || !o.rows[0].user_id) return 0;
+  const items = await client.query(
+    `SELECT p.name_ar AS product, oi.quantity, oi.unit, oi.unit_price FROM order_items oi
+     LEFT JOIN products p ON p.id = oi.product_id WHERE oi.order_id = $1 ORDER BY oi.id`, [orderId]);
+  const n = buildOrderPricedTrader({ orderNumber: o.rows[0].order_number, lines: items.rows,
+    total: o.rows[0].total_amount, currency: o.rows[0].currency });
+  return insertNotifications(client, [o.rows[0].user_id], { ...n, type: 'ORDER_PRICED' }, 'orders', orderId);
+};
+
+/** إشعار الإدارة عند اختيار طريقة الدفع. */
+const notifyPaymentChosen = async (client, orderId, paymentTerms) => {
+  const o = await client.query(
+    `SELECT o.order_number, o.total_amount, u.full_name FROM orders o
+     JOIN customers cu ON cu.id = o.customer_id JOIN users u ON u.id = cu.user_id WHERE o.id = $1`, [orderId]);
+  if (!o.rows.length) return 0;
+  const n = buildPaymentChosenAdmin({ orderNumber: o.rows[0].order_number, customerName: o.rows[0].full_name,
+    paymentTerms, total: o.rows[0].total_amount });
+  return insertNotifications(client, await adminUserIds(client), { ...n, type: 'PAYMENT_CHOSEN' }, 'orders', orderId);
+};
+
 module.exports = {
+  buildOrderPricedTrader, buildPaymentChosenAdmin, notifyOrderPriced, notifyPaymentChosen,
   buildOrderCreatedAdmin, buildDestinationDeliveredTrader, buildDestinationDeliveredAdmin,
   adminUserIds, notifyOrderCreated, notifyDestinationDelivered,
 };

@@ -73,7 +73,7 @@ test('setOrderPricing: فشل إشعار العميل لا يوقف التسعي
     [/SELECT \* FROM orders WHERE id = \$1 FOR UPDATE/, () => ({ rows: [{ id: 'o1', status: 'PENDING_PRICING', order_number: 'GHO-1', customer_id: 'c1' }] })],
     [/SELECT \* FROM order_items WHERE order_id/, () => ({ rows: [{ id: 'i1', quantity: 10, source_id: 's1' }] })],
     [/FROM order_ceilings WHERE is_active/, () => ({ rows: [] })],
-    [/FROM customers c JOIN users u/, () => { throw new Error('relation notifications does not exist'); }],
+    [/FROM orders o JOIN customers cu ON cu\.id = o\.customer_id/, () => { throw new Error('relation notifications does not exist'); }],
   ]);
   const svc = load();
   const r = await svc.setOrderPricing('o1', 'staff1', { items: [{ orderItemId: 'i1', unitPrice: 100 }] });
