@@ -1,0 +1,34 @@
+--- mobile/lib/features/admin/presentation/screens/admin_create_fax_screen.dart	2026-10-17 19:55:19.677663575 +0000
++++ mobile/lib/features/admin/presentation/screens/admin_create_fax_screen.dart	2026-10-17 19:55:19.687222335 +0000
+@@ -104,6 +104,10 @@
+   List<Map<String, dynamic>> _productsOfFactory() =>
+       _products.where((p) => p['source_id']?.toString() == _sourceId).toList();
+ 
++  /// قاطرات السائق المختار فقط (السائق قد يملك أكثر من قاطرة)
++  List<Map<String, dynamic>> _vehiclesOfDriver() =>
++      _vehicles.where((v) => v['current_driver_id']?.toString() == _driverId).toList();
++
+   Future<void> _submit() async {
+     if (_sourceId == null || _driverId == null || _vehicleId == null) {
+       setState(() => _error = 'اختر المصنع والسائق والقاطرة');
+@@ -214,7 +218,10 @@
+                       value: d['id'].toString(),
+                       child: Text(d['full_name']?.toString() ?? d['name']?.toString() ?? '—'),
+                     )).toList(),
+-                    onChanged: (v) => setState(() => _driverId = v),
++                    onChanged: (v) => setState(() {
++                      _driverId = v;
++                      _vehicleId = null;
++                    }),
+                   ),
+                   const SizedBox(height: 16),
+ 
+@@ -222,7 +229,7 @@
+                   DropdownButtonFormField<String>(
+                     value: _vehicleId,
+                     decoration: const InputDecoration(prefixIcon: Icon(Icons.local_shipping)),
+-                    items: _vehicles.map((v) => DropdownMenuItem(
++                    items: _vehiclesOfDriver().map((v) => DropdownMenuItem(
+                       value: v['id'].toString(),
+                       child: Text(v['plate_number']?.toString() ?? '—'),
+                     )).toList(),

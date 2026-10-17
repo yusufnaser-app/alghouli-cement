@@ -220,7 +220,9 @@ class _State extends State<AdminCreateFaxScreen> {
                     )).toList(),
                     onChanged: (v) => setState(() {
                       _driverId = v;
-                      _vehicleId = null;
+                      // قاطرة واحدة للسائق تُختار تلقائيًا؛ أكثر من واحدة تُترك للاختيار من القائمة المصفّاة
+                      final mine = _vehicles.where((x) => x['current_driver_id']?.toString() == v).toList();
+                      _vehicleId = mine.length == 1 ? mine.first['id'].toString() : null;
                     }),
                   ),
                   const SizedBox(height: 16),
@@ -228,7 +230,12 @@ class _State extends State<AdminCreateFaxScreen> {
                   _lbl('القاطرة'),
                   DropdownButtonFormField<String>(
                     value: _vehicleId,
-                    decoration: const InputDecoration(prefixIcon: Icon(Icons.local_shipping)),
+                    decoration: InputDecoration(
+                      prefixIcon: const Icon(Icons.local_shipping),
+                      hintText: _driverId == null
+                          ? 'اختر السائق أولًا'
+                          : (_vehiclesOfDriver().isEmpty ? 'لا توجد قاطرة مرتبطة بهذا السائق' : 'اختر القاطرة'),
+                    ),
                     items: _vehiclesOfDriver().map((v) => DropdownMenuItem(
                       value: v['id'].toString(),
                       child: Text(v['plate_number']?.toString() ?? '—'),
