@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../data/login_memory.dart';
 import '../../../../core/branding/branding_service.dart';
 import '../../../../core/widgets/brand_logo.dart';
 import '../../data/auth_service.dart';
@@ -20,6 +22,24 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _loading = false;
   bool _obscure = true;
   String? _error;
+  bool _remember = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreSaved();
+  }
+
+  /// يملأ الرقم وكلمة المرور المحفوظين عند فتح الشاشة.
+  Future<void> _restoreSaved() async {
+    final m = await LoginMemory.load();
+    if (!mounted) return;
+    setState(() {
+      _remember = m['remember'] as bool;
+      _phoneController.text = m['digits'] as String;
+      _passwordController.text = m['password'] as String;
+    });
+  }
 
   @override
   void dispose() {
@@ -29,13 +49,18 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _login() async {
-    final phone = _phoneController.text.trim();
+    final digits = _phoneController.text.trim();
     final password = _passwordController.text;
 
-    if (phone.isEmpty || password.isEmpty) {
-      setState(() => _error = 'يرجى إدخال الجوال وكلمة المرور');
+    if (digits.length != 9) {
+      setState(() => _error = 'أدخل رقم الجوال المكون من 9 أرقام (بعد 967)');
       return;
     }
+    if (password.isEmpty) {
+      setState(() => _error = 'يرجى إدخال كلمة المرور');
+      return;
+    }
+    final phone = '$kPhoneCountryPrefix$digits';
 
     setState(() {
       _loading = true;
@@ -44,6 +69,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       await _authService.login(phone: phone, password: password);
+      await LoginMemory.save(digits: digits, password: password, remember: _remember);
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
@@ -132,11 +158,16 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 6),
               TextField(
                 controller: _phoneController,
-                keyboardType: TextInputType.phone,
+                keyboardType: TextInputType.number,
                 textDirection: TextDirection.ltr,
+                maxLength: 9,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: const InputDecoration(
-                  hintText: '9677xxxxxxxx',
                   prefixIcon: Icon(Icons.phone),
+                  prefixText: '967 ',
+                  prefixStyle: TextStyle(fontWeight: FontWeight.bold, color: Colors.black87),
+                  hintText: '7XXXXXXXX',
+                  counterText: '',
                 ),
               ),
               const SizedBox(height: 16),
@@ -162,6 +193,17 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 28),
+
+              // ═══ تذكّرني ═══
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                value: _remember,
+                title: const Text('تذكّرني على هذا الجهاز'),
+                subtitle: const Text('يحفظ الرقم وكلمة المرور حتى لا تكتبهما كل مرة'),
+                onChanged: (v) => setState(() => _remember = v ?? true),
+              ),
+              const SizedBox(height: 8),
 
               // ═══ زر الدخول ═══
               ElevatedButton(
