@@ -149,7 +149,7 @@ class _S extends State<AdminFactoryReportScreen> {
               ),
             if (_report != null) ...[
               const SizedBox(height: 12),
-              RepaintBoundary(key: _captureKey, child: _reportBody(_report!)),
+              RepaintBoundary(key: _captureKey, child: Center(child: SizedBox(width: 400, child: _reportBody(_report!)))),
             ],
           ],
         ),
@@ -206,34 +206,40 @@ class _S extends State<AdminFactoryReportScreen> {
     );
   }
 
+  /// جدول بأسطر ثابتة الأعمدة (بلا تمرير أفقي) حتى تبقى الصورة واضحة.
   Widget _table(List<Map> rows) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DataTable(
-        headingRowHeight: 36,
-        dataRowMinHeight: 32,
-        dataRowMaxHeight: 48,
-        columnSpacing: 16,
-        columns: const [
-          DataColumn(label: Text('م')),
-          DataColumn(label: Text('رقم الفاكس')),
-          DataColumn(label: Text('اسم السائق')),
-          DataColumn(label: Text('رقم القاطرة')),
-          DataColumn(label: Text('نوع الأسمنت')),
-          DataColumn(label: Text('عدد الأكياس')),
-        ],
-        rows: [
-          for (var i = 0; i < rows.length; i++)
-            DataRow(cells: [
-              DataCell(Text('${i + 1}')),
-              DataCell(Text('${rows[i]['fax_number'] ?? '—'}${rows[i]['cancelled'] == true ? ' (ملغى)' : ''}')),
-              DataCell(Text('${rows[i]['driver_name'] ?? ''}')),
-              DataCell(Text('${rows[i]['plate_number'] ?? ''}')),
-              DataCell(Text('${rows[i]['product_name'] ?? ''}')),
-              DataCell(Text('${rows[i]['bags'] ?? '—'}')),
+    Widget cell(String t, {int flex = 1, bool bold = false}) => Expanded(
+          flex: flex,
+          child: Text(t, style: TextStyle(fontSize: 12, fontWeight: bold ? FontWeight.bold : FontWeight.normal)),
+        );
+    return Column(
+      children: [
+        Container(
+          color: AppColors.primary.withOpacity(0.08),
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+          child: Row(children: [
+            cell('م', flex: 1, bold: true),
+            cell('رقم الفاكس', flex: 3, bold: true),
+            cell('السائق', flex: 3, bold: true),
+            cell('القاطرة', flex: 2, bold: true),
+            cell('الصنف', flex: 3, bold: true),
+            cell('الأكياس', flex: 2, bold: true),
+          ]),
+        ),
+        for (var i = 0; i < rows.length; i++)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFE0E0E0)))),
+            child: Row(children: [
+              cell('${i + 1}', flex: 1),
+              cell('${rows[i]['fax_number'] ?? '—'}${rows[i]['cancelled'] == true ? ' (ملغى)' : ''}', flex: 3),
+              cell('${rows[i]['driver_name'] ?? ''}', flex: 3),
+              cell('${rows[i]['plate_number'] ?? ''}', flex: 2),
+              cell('${rows[i]['product_name'] ?? ''}', flex: 3),
+              cell('${rows[i]['bags'] ?? '—'}', flex: 2),
             ]),
-        ],
-      ),
+          ),
+      ],
     );
   }
 }

@@ -47,6 +47,16 @@ class CustomerAccountService {
     }
   }
 
+  /// دفعة أو حوالة من التاجر (تُرحَّل إلى حسابه بالخادم).
+  Future<void> recordCustomerPayment(String customerId, double amount, String notes) async {
+    try {
+      await _client.dio.post('/customers/$customerId/payments',
+          data: {'amount': amount, 'method': 'transfer', if (notes.isNotEmpty) 'notes': notes});
+    } on DioException catch (e) {
+      throw Exception(handleApiError(e));
+    }
+  }
+
   Future<Map<String, dynamic>> statement(String customerId) async {
     try {
       final res = await _client.dio.get('/accounting/customer/$customerId/statement');

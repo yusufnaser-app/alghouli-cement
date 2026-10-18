@@ -100,6 +100,50 @@ class _S extends State<AdminCustomerAccountScreen> {
     }
   }
 
+  /// دفعة أو حوالة من التاجر بمبلغ وبيان، تُرحَّل إلى حسابه.
+  Future<void> _payment() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final amountCtrl = TextEditingController();
+    final notesCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('دفعة / حوالة من التاجر'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+            controller: amountCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(labelText: 'المبلغ (ريال)'),
+          ),
+          TextField(controller: notesCtrl, decoration: const InputDecoration(labelText: 'البيان / رقم الحوالة')),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('إلغاء')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('تسجيل')),
+        ],
+      ),
+    );
+    final amount = double.tryParse(amountCtrl.text.trim().replaceAll(',', ''));
+    final notes = notesCtrl.text.trim();
+    amountCtrl.dispose();
+    notesCtrl.dispose();
+    if (ok != true) return;
+    if (amount == null || amount <= 0) {
+      messenger.showSnackBar(const SnackBar(content: Text('أدخل مبلغًا صحيحًا')));
+      return;
+    }
+    try {
+      await _svc.recordCustomerPayment(widget.customerId, amount, notes);
+      messenger.showSnackBar(const SnackBar(content: Text('تم تسجيل الدفعة'), backgroundColor: AppColors.success));
+      if (mounted) await _load();
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+        content: Text(e.toString().replaceFirst('Exception: ', '')),
+        backgroundColor: AppColors.danger,
+      ));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Directionality(
@@ -109,6 +153,11 @@ class _S extends State<AdminCustomerAccountScreen> {
         appBar: AppBar(
           title: Text(widget.customerName),
           actions: [
+            IconButton(
+              tooltip: 'دفعة / حوالة من التاجر',
+              icon: const Icon(Icons.payments_outlined),
+              onPressed: _loading ? null : _payment,
+            ),
             IconButton(
               tooltip: 'تحديد السقف',
               icon: const Icon(Icons.credit_score),
@@ -142,7 +191,7 @@ class _S extends State<AdminCustomerAccountScreen> {
                           key: _captureKey,
                           child: ColoredBox(
                             color: Colors.white,
-                            child: Column(
+                            child: SizedBox(width: 400, child: Column(
                               mainAxisSize: MainAxisSize.min,
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
@@ -172,7 +221,7 @@ class _S extends State<AdminCustomerAccountScreen> {
                                 _rulesCard(),
                                 ..._statementCards(),
                               ],
-                            ),
+                            )),
                           ),
                         ),
                       ],

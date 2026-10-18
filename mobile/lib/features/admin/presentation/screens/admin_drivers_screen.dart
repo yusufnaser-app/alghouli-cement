@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../data/admin_service.dart';
+import 'admin_driver_account_screen.dart';
 
 class AdminDriversScreen extends StatefulWidget {
   const AdminDriversScreen({super.key});
@@ -46,6 +47,8 @@ class _S extends State<AdminDriversScreen> {
                   child: const Icon(Icons.person, color: AppColors.info)),
                 title: Text(d['full_name']?.toString() ?? '—'),
                 subtitle: Text(d['phone']?.toString() ?? '—'),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AdminDriverAccountScreen(
+                  driverId: d['id'].toString(), driverName: d['full_name']?.toString() ?? '—'))),
                 trailing: Text('${d['current_balance'] ?? 0} ر.ي',
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
               ));
